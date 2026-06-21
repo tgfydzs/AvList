@@ -12,9 +12,12 @@ import android.view.View;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.inputmethod.EditorInfo;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
@@ -49,6 +52,9 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
     private List<CardItem> selectedList = new ArrayList<>();
     private CardAdapter adapter;
     private final Gson gson = new Gson();
+    // 静态标记：快捷设置瓷砖请求弹出新增对话框
+    public static boolean pendingShowAddDialog = false;
+
     private boolean isMultiMode = false;
     private DrawerLayout drawerLayout;
     private X5WebView verifyWebView;
@@ -223,6 +229,28 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
         binding.fabAdd.setOnClickListener(v -> showAddDialog());
     }
 
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        tryShowAddFromTile();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        tryShowAddFromTile();
+    }
+
+    private void tryShowAddFromTile() {
+        if (!pendingShowAddDialog || binding == null) return;
+        pendingShowAddDialog = false;
+        try {
+            new Handler(Looper.getMainLooper()).postDelayed(this::showAddDialog, 400);
+        } catch (Exception e) {
+            LogUtil.e("快捷磁貼弹窗失败", e);
+        }
+    }
+
     // 显示验证WebView
     public void showVerifyWebView() {
         runOnUiThread(() -> verifyWebView.setVisibility(View.VISIBLE));
@@ -260,6 +288,22 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
         EditText etTag = view.findViewById(R.id.etTag);
         EditText etRemark = view.findViewById(R.id.etRemark);
         SwitchCompat swScrape = view.findViewById(R.id.swScrape);
+        Spinner spScrapeSource = view.findViewById(R.id.spScrapeSource);
+
+        // 填充刮削源选择器
+        List<ScrapeSource> allSources = ScrapeSource.loadAll(this);
+        ScrapeSource defaultSrc = ScrapeSource.getDefault(this);
+        int defaultIdx = 0;
+        String[] sourceNames = new String[allSources.size()];
+        for (int si = 0; si < allSources.size(); si++) {
+            sourceNames[si] = allSources.get(si).getName();
+            if (allSources.get(si).getId().equals(defaultSrc.getId())) defaultIdx = si;
+        }
+        ArrayAdapter<String> srcAdapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_item, sourceNames);
+        srcAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spScrapeSource.setAdapter(srcAdapter);
+        spScrapeSource.setSelection(defaultIdx);
 
         builder.setView(view)
                 .setPositiveButton("添加", (dialogInterface, i) -> {
@@ -308,13 +352,18 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
                             swScrape.isChecked()
                     );
 
+                    // 提前捕获刮削源（dismiss前）
+                    final int selectedSrcIdx = spScrapeSource.getSelectedItemPosition();
+                    final ScrapeSource selectedSrc = (selectedSrcIdx >= 0 && selectedSrcIdx < allSources.size())
+                            ? allSources.get(selectedSrcIdx) : ScrapeSource.getDefault(MainActivity.this);
+
                     dialogInterface.dismiss();
 
                     originList.add(0, item);
                     cardList.add(0, item);
                     adapter.notifyItemInserted(0);
                     saveCacheData();
-                    LogUtil.i("添加卡片: code=" + normalizedCode + " scrape=" + doScrape);
+                    LogUtil.i("添加卡片: code=" + normalizedCode + " scrape=" + doScrape + " 源=" + selectedSrc.getName());
 
                     // =========================
                     // 2. 异步刮削（仅在开关打开且番号非空时）
@@ -327,7 +376,7 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
                         scrapeBusy = true;
                         final int index = 0;
                         final CardItem finalItem = item;
-                        final ScrapeSource scrapeSource = ScrapeSource.getDefault(MainActivity.this);
+                        final ScrapeSource scrapeSource = selectedSrc;
 
                         JavResolver resolver = new JavResolver(
                                 verifyWebView,
@@ -782,6 +831,11 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
 
         final CardItem finalItem = item;
         final ScrapeSource scrapeSource = ScrapeSource.getDefault(MainActivity.this);
+        final boolean skipOverwrite = item.isUserEdited();
+
+        if (skipOverwrite) {
+            LogUtil.i("刮削跳过（用户已编辑）: " + code);
+        }
 
         JavResolver resolver = new JavResolver(
                 verifyWebView,
@@ -798,8 +852,10 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
                     }
 
                     runOnUiThread(() -> {
-                        finalItem.setTitle(scrapeTitle);
-                        finalItem.setImageUrl(imgUrl);
+                        if (!skipOverwrite) {
+                            finalItem.setTitle(scrapeTitle);
+                            finalItem.setImageUrl(imgUrl);
+                        }
                         int displayIdx = cardList.indexOf(finalItem);
                         if (displayIdx >= 0) adapter.notifyItemChanged(displayIdx);
                         saveCacheData();

@@ -16,6 +16,7 @@ public class CardItem implements Serializable {
     private String tag;
     private String code;
     private boolean scrapeEnabled = true;
+    private boolean userEdited = false;  // 用户手动编辑过 → 刮削不再覆盖标题/图片
     private transient String localImagePath; // transient: 不序列化到 JSON，运行时从内部存储推导
 
     public CardItem() {
@@ -154,6 +155,14 @@ public class CardItem implements Serializable {
 
     public void setScrapeEnabled(boolean scrapeEnabled) {
         this.scrapeEnabled = scrapeEnabled;
+    }
+
+    public boolean isUserEdited() {
+        return userEdited;
+    }
+
+    public void setUserEdited(boolean userEdited) {
+        this.userEdited = userEdited;
     }
 
     public String getLocalImagePath() {

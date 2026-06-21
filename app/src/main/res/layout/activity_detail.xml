@@ -61,13 +61,23 @@
                 android:layout_marginBottom="8dp">
 
                 <androidx.appcompat.widget.AppCompatButton
+                    android:id="@+id/btnEditDetail"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:text="编辑"
+                    android:textSize="13sp"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"/>
+
+                <androidx.appcompat.widget.AppCompatButton
                     android:id="@+id/btnScrapeDetail"
                     android:layout_width="wrap_content"
                     android:layout_height="36dp"
                     android:text="刮削"
                     android:textSize="13sp"
                     android:paddingStart="16dp"
-                    android:paddingEnd="16dp"/>
+                    android:paddingEnd="16dp"
+                    android:layout_marginStart="8dp"/>
 
                 <androidx.appcompat.widget.AppCompatButton
                     android:id="@+id/btnClearDetail"

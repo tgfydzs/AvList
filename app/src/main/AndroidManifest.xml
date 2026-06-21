@@ -39,6 +39,17 @@
             android:name=".DetailActivity"
             android:exported="false"/>
 
+        <service
+            android:name=".AddCardTileService"
+            android:icon="@drawable/ic_tile_add"
+            android:label="新增卡片"
+            android:exported="true"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
     </application>
 
 </manifest>
