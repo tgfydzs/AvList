@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/menu_export"
+        android:title="导出JSON"/>
+    <item
+        android:id="@+id/menu_import"
+        android:title="导入JSON"/>
+    <item
+        android:id="@+id/menu_import_txt"
+        android:title="导入番号列表"/>
+    <item
+        android:id="@+id/menu_multi_select"
+        android:title="多选模式"/>
+    <item
+        android:id="@+id/menu_log"
+        android:title="运行日志"/>
+</menu>

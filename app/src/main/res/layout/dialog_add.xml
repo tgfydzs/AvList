@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <EditText
+        android:id="@+id/etCode"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="辨识码（选填，用于数据去重导入，仅保留字母和数字）"/>
+
+    <EditText
+        android:id="@+id/etTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="输入标题"
+        android:layout_marginTop="8dp"/>
+
+    <EditText
+        android:id="@+id/etContent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="输入简介内容"
+        android:layout_marginTop="8dp"/>
+
+    <EditText
+        android:id="@+id/etImageUrl"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="图片网络链接"
+        android:layout_marginTop="8dp"/>
+
+    <EditText
+        android:id="@+id/etTag"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="标签（多个用空格分隔）"
+        android:layout_marginTop="8dp"/>
+
+    <EditText
+        android:id="@+id/etRemark"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="详细备注信息"
+        android:lines="3"
+        android:layout_marginTop="8dp"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="12dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="自动刮削（填入番号后从网络获取标题和图片）"
+            android:textSize="13sp"
+            android:textColor="#666666"/>
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/swScrape"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true"/>
+    </LinearLayout>
+
+</LinearLayout>

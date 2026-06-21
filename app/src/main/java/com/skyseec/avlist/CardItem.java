@@ -1,0 +1,160 @@
+package com.skyseec.avlist;
+
+import java.io.File;
+import java.io.Serializable;
+import java.util.Locale;
+import java.util.UUID;
+
+public class CardItem implements Serializable {
+
+    private String id;
+    private String title;
+    private String content;
+    private String imageUrl;
+    private long createTime;
+    private String remark;
+    private String tag;
+    private String code;
+    private boolean scrapeEnabled = true;
+    private transient String localImagePath; // transient: 不序列化到 JSON，运行时从内部存储推导
+
+    public CardItem() {
+        // 防止Gson空字段崩
+        this.id = UUID.randomUUID().toString();
+        this.createTime = System.currentTimeMillis();
+    }
+
+    public CardItem(String id, String title, String content, String imageUrl,
+                    long createTime, String remark, String tag, String code,
+                    boolean scrapeEnabled) {
+
+        this.id = id != null ? id : UUID.randomUUID().toString();
+        this.title = title;
+        this.content = content;
+        this.imageUrl = imageUrl;
+        this.createTime = createTime;
+        this.remark = remark;
+        this.tag = tag;
+        this.code = code;
+        this.scrapeEnabled = scrapeEnabled;
+    }
+
+    // =========================
+    // Getter / Setter
+    // =========================
+
+    public String getId() {
+        if (id == null) {
+            id = UUID.randomUUID().toString();
+        }
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public String getTitle() {
+        return title == null ? "" : title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public String getContent() {
+        return content == null ? "" : content;
+    }
+
+    public void setContent(String content) {
+        this.content = content;
+    }
+
+    public String getImageUrl() {
+        return imageUrl == null ? "" : imageUrl;
+    }
+
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
+    }
+
+    public long getCreateTime() {
+        return createTime;
+    }
+
+    public void setCreateTime(long createTime) {
+        this.createTime = createTime;
+    }
+
+    public String getRemark() {
+        return remark == null ? "" : remark;
+    }
+
+    public void setRemark(String remark) {
+        this.remark = remark;
+    }
+
+    public String getTag() {
+        return tag == null ? "" : tag;
+    }
+
+    public void setTag(String tag) {
+        this.tag = tag;
+    }
+
+    public String getCode() {
+        return code == null ? "" : code;
+    }
+
+    public void setCode(String code) {
+        this.code = code;
+    }
+
+    // =========================
+    // 核心：统一标准化code（重要优化）
+    // =========================
+    public String normalizeCode() {
+        if (code == null) return "";
+        return code.replaceAll("[^a-zA-Z0-9]", "").toUpperCase(Locale.ROOT);
+    }
+
+    public static String normalizeCode(String input) {
+        if (input == null) return "";
+        return input.replaceAll("[^a-zA-Z0-9]", "").toUpperCase(Locale.ROOT);
+    }
+
+    // =========================
+    // 唯一性判断（优化版）
+    // =========================
+    public boolean isSameCode(String targetCode) {
+        String a = normalizeCode();
+        String b = normalizeCode(targetCode);
+        return !a.isEmpty() && a.equals(b);
+    }
+
+    public boolean isScrapeEnabled() {
+        return scrapeEnabled;
+    }
+
+    public void setScrapeEnabled(boolean scrapeEnabled) {
+        this.scrapeEnabled = scrapeEnabled;
+    }
+
+    public String getLocalImagePath() {
+        return localImagePath;
+    }
+
+    public void setLocalImagePath(String localImagePath) {
+        this.localImagePath = localImagePath;
+    }
+
+    /**
+     * 根据 context 推导本地图片文件路径（不依赖 transient 字段持久化）
+     */
+    public String resolveLocalImagePath(android.content.Context context) {
+        if (localImagePath != null) return localImagePath;
+        File dir = new File(context.getFilesDir(), "images");
+        File file = new File(dir, id + ".jpg");
+        return file.getAbsolutePath();
+    }
+}
