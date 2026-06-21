@@ -8,7 +8,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.SwitchCompat;
+import androidx.appcompat.widget.AppCompatButton;
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.model.GlideUrl;
 import com.bumptech.glide.load.model.LazyHeaders;
@@ -22,7 +22,7 @@ public class DetailActivity extends AppCompatActivity {
     private ImageView ivDetailImage;
     private TextView tvDetailCode, tvDetailTitle, tvDetailTag, tvDetailTime;
     private TextView tvDetailContent, tvDetailRemark;
-    private SwitchCompat swScrapeDetail;
+    private AppCompatButton btnScrapeDetail, btnClearDetail;
     private LinearLayout llContentSection, llRemarkSection;
     private CardItem item;
     private X5WebView scrapeWebView;
@@ -39,7 +39,8 @@ public class DetailActivity extends AppCompatActivity {
         tvDetailTime = findViewById(R.id.tvDetailTime);
         tvDetailContent = findViewById(R.id.tvDetailContent);
         tvDetailRemark = findViewById(R.id.tvDetailRemark);
-        swScrapeDetail = findViewById(R.id.swScrapeDetail);
+        btnScrapeDetail = findViewById(R.id.btnScrapeDetail);
+        btnClearDetail = findViewById(R.id.btnClearDetail);
         llContentSection = findViewById(R.id.llContentSection);
         llRemarkSection = findViewById(R.id.llRemarkSection);
 
@@ -71,11 +72,15 @@ public class DetailActivity extends AppCompatActivity {
         } else {
             String imgUrl = item.getImageUrl();
             if (imgUrl != null && !imgUrl.trim().isEmpty()) {
-                if (imgUrl.startsWith("/")) imgUrl = "https://www.javbus.com" + imgUrl;
+                ScrapeSource defSource = ScrapeSource.getDefault(this);
+                if (imgUrl.startsWith("/")) {
+                    imgUrl = defSource.getBaseDomain() + imgUrl;
+                }
+                String referer = defSource.getBaseDomain();
                 GlideUrl glideUrl = new GlideUrl(imgUrl,
                         new LazyHeaders.Builder()
                                 .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                                .addHeader("Referer", "https://www.javbus.com/").build());
+                                .addHeader("Referer", referer).build());
                 Glide.with(this).load(glideUrl).dontTransform().into(ivDetailImage);
                 hasImage = true;
             }
@@ -97,14 +102,30 @@ public class DetailActivity extends AppCompatActivity {
         tvDetailTag.setVisibility(tag != null && !tag.trim().isEmpty() ? View.VISIBLE : View.GONE);
         tvDetailTag.setText(tag);
 
-        // ========== 刮削开关 ==========
-        swScrapeDetail.setOnCheckedChangeListener(null);
-        swScrapeDetail.setChecked(item.isScrapeEnabled());
-        swScrapeDetail.setOnCheckedChangeListener((btn, checked) -> {
-            item.setScrapeEnabled(checked);
-            if (checked && code != null && !code.trim().isEmpty()) {
+        // ========== 刮削 / 清除按钮 ==========
+        btnScrapeDetail.setOnClickListener(v -> {
+            if (code != null && !code.trim().isEmpty()) {
                 triggerScrape(code);
+            } else {
+                Toast.makeText(this, "无番号，无法刮削", Toast.LENGTH_SHORT).show();
             }
+        });
+
+        boolean hasScrapedData = (item.getTitle() != null && !item.getTitle().trim().isEmpty())
+                || (item.getImageUrl() != null && !item.getImageUrl().trim().isEmpty());
+        btnClearDetail.setVisibility(hasScrapedData ? View.VISIBLE : View.GONE);
+        btnClearDetail.setOnClickListener(v -> {
+            // 删除本地图片
+            try {
+                String p = item.resolveLocalImagePath(this);
+                File f = new File(p);
+                if (f.exists()) f.delete();
+            } catch (Exception ignored) {}
+            item.setTitle("");
+            item.setImageUrl("");
+            item.setLocalImagePath(null);
+            bindData();
+            Toast.makeText(this, "已清除", Toast.LENGTH_SHORT).show();
         });
 
         // ========== 时间 ==========
@@ -133,20 +154,22 @@ public class DetailActivity extends AppCompatActivity {
     private void triggerScrape(String code) {
         Toast.makeText(this, "正在刮削 " + code + " ...", Toast.LENGTH_SHORT).show();
 
+        final ScrapeSource scrapeSource = ScrapeSource.getDefault(this);
+
         JavResolver resolver = new JavResolver(
                 scrapeWebView,
+                scrapeSource,
                 (scrapeTitle, imgUrl, detailUrl) -> {
 
                     // 下载新图片到本地（覆盖旧图）
                     if (imgUrl != null && !imgUrl.isEmpty()) {
-                        String resolvedUrl = imgUrl.startsWith("/")
-                                ? "https://www.javbus.com" + imgUrl : imgUrl;
+                        String resolvedUrl = scrapeSource.resolveImageUrl(imgUrl);
                         downloadImageToLocal(resolvedUrl);
                     }
 
                     runOnUiThread(() -> {
-                        if (scrapeTitle != null) item.setTitle(scrapeTitle);
-                        if (imgUrl != null) item.setImageUrl(imgUrl);
+                        item.setTitle(scrapeTitle);
+                        item.setImageUrl(imgUrl);
                         bindData();
                         Toast.makeText(this, "刮削完成", Toast.LENGTH_SHORT).show();
                     });
@@ -156,6 +179,10 @@ public class DetailActivity extends AppCompatActivity {
     }
 
     private void downloadImageToLocal(String imageUrl) {
+        if (!ScrapeSource.isValidImageUrl(imageUrl)) {
+            LogUtil.w("图片URL无效，跳过下载: " + imageUrl);
+            return;
+        }
         new Thread(() -> {
             java.net.HttpURLConnection connection = null;
             try {
@@ -163,7 +190,9 @@ public class DetailActivity extends AppCompatActivity {
                 connection = (java.net.HttpURLConnection) url.openConnection();
                 connection.setRequestProperty("User-Agent",
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-                connection.setRequestProperty("Referer", "https://www.javbus.com/");
+                // 用刮削源的域名做 Referer（CDN 校验来源）
+                ScrapeSource ds = ScrapeSource.getDefault(DetailActivity.this);
+                connection.setRequestProperty("Referer", ds.getBaseDomain());
                 connection.setConnectTimeout(10000);
                 connection.setReadTimeout(15000);
                 connection.connect();

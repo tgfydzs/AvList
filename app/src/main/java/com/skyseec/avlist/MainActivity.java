@@ -2,6 +2,8 @@ package com.skyseec.avlist;
 
 import android.content.Intent;
 import android.net.Uri;
+import androidx.core.view.GravityCompat;
+import androidx.drawerlayout.widget.DrawerLayout;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -12,7 +14,7 @@ import android.text.TextWatcher;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.ImageView;
-import android.widget.PopupMenu;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
@@ -48,7 +50,9 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
     private CardAdapter adapter;
     private final Gson gson = new Gson();
     private boolean isMultiMode = false;
+    private DrawerLayout drawerLayout;
     private X5WebView verifyWebView;
+    private volatile boolean scrapeBusy = false;
 
     private final ActivityResultLauncher<Intent> selectFileLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -91,25 +95,47 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
 
         LogUtil.i("应用启动");
 
-        // 动态创建WebView，不再依赖XML的 wv_verify_container
+        // 动态创建WebView，添加到内容区（不覆盖侧边栏）
         verifyWebView = new X5WebView(this);
         CoordinatorLayout.LayoutParams layoutParams = new CoordinatorLayout.LayoutParams(
                 CoordinatorLayout.LayoutParams.MATCH_PARENT,
                 CoordinatorLayout.LayoutParams.MATCH_PARENT
         );
         verifyWebView.setVisibility(View.GONE);
-        // 添加到根布局
-        binding.getRoot().addView(verifyWebView, layoutParams);
+        binding.contentLayout.addView(verifyWebView, layoutParams);
 
         initRecyclerView();
         loadCacheData();
 
-        // 返回键逻辑不变
+        // 获取DrawerLayout
+        drawerLayout = binding.drawerLayout;
+
+        // 增大右边缘滑动检测区域：DrawerLayout默认只检测20dp边缘，
+        // 通过反射拿到内部 ViewDragHelper 把边缘宽度拉到 80dp
+        try {
+            float density = getResources().getDisplayMetrics().density;
+            int edgeSizePx = (int) (80 * density);
+            java.lang.reflect.Field rdField = DrawerLayout.class.getDeclaredField("mRightDragger");
+            rdField.setAccessible(true);
+            Object rightDragger = rdField.get(drawerLayout);
+            if (rightDragger != null) {
+                Class<?> vdhClass = rightDragger.getClass();
+                java.lang.reflect.Field esField = vdhClass.getDeclaredField("mEdgeSize");
+                esField.setAccessible(true);
+                esField.setInt(rightDragger, edgeSizePx);
+            }
+        } catch (Exception e) {
+            LogUtil.e("无法设置抽屉滑动宽度", e);
+        }
+
+        // 返回键逻辑
         getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
                 if (isMultiMode) {
                     exitMultiMode();
+                } else if (drawerLayout.isDrawerOpen(GravityCompat.END)) {
+                    drawerLayout.closeDrawer(GravityCompat.END);
                 } else if (verifyWebView.getVisibility() == View.VISIBLE) {
                     hideVerifyWebView();
                     verifyWebView.stopLoading();
@@ -120,11 +146,54 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
             }
         });
 
-        // 搜索栏
-        binding.btnMore.setOnClickListener(this::showPopupMenu);
+        // 增大右边缘滑动检测区域
+        int edgeSize = Math.max(getResources().getDisplayMetrics().widthPixels / 6, 80);
+        try {
+            java.lang.reflect.Field field = DrawerLayout.class.getDeclaredField("mMinDrawerMargin");
+            field.setAccessible(true);
+            field.set(drawerLayout, edgeSize);
+        } catch (Exception ignored) {}
 
-        EditText etSearch = binding.getRoot().findViewById(R.id.etSearch);
-        ImageView ivClear = binding.getRoot().findViewById(R.id.ivClear);
+        // 侧边栏菜单
+        binding.btnMore.setOnClickListener(v ->
+                drawerLayout.openDrawer(GravityCompat.END));
+
+        // 右滑打开抽屉：触摸起点在屏幕30%位置右侧，左滑超过40dp触发
+        binding.contentLayout.setOnTouchListener(
+                new DrawerEdgeHelper(drawerLayout, 0.3f, 40)
+        );
+
+        binding.drawerExport.setOnClickListener(v -> {
+            drawerLayout.closeDrawer(GravityCompat.END);
+            exportJsonToDownload();
+        });
+        binding.drawerImport.setOnClickListener(v -> {
+            drawerLayout.closeDrawer(GravityCompat.END);
+            openFileChooser();
+        });
+        binding.drawerImportTxt.setOnClickListener(v -> {
+            drawerLayout.closeDrawer(GravityCompat.END);
+            showImportCodeListDialog();
+        });
+        binding.drawerMultiSelect.setOnClickListener(v -> {
+            drawerLayout.closeDrawer(GravityCompat.END);
+            openMultiSelectMode();
+        });
+        binding.drawerJumpSource.setOnClickListener(v -> {
+            drawerLayout.closeDrawer(GravityCompat.END);
+            showJumpSourceDialog();
+        });
+        binding.drawerScrapeSource.setOnClickListener(v -> {
+            drawerLayout.closeDrawer(GravityCompat.END);
+            showScrapeSourceDialog();
+        });
+        binding.drawerLog.setOnClickListener(v -> {
+            drawerLayout.closeDrawer(GravityCompat.END);
+            showLogDialog();
+        });
+
+        EditText etSearch = binding.etSearch;
+        ImageView ivClear = binding.ivClear;
 
         etSearch.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -251,11 +320,18 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
                     // 2. 异步刮削（仅在开关打开且番号非空时）
                     // =========================
                     if (doScrape) {
+                        if (scrapeBusy) {
+                            LogUtil.w("刮削忙，跳过添加后刮削");
+                            return;
+                        }
+                        scrapeBusy = true;
                         final int index = 0;
                         final CardItem finalItem = item;
+                        final ScrapeSource scrapeSource = ScrapeSource.getDefault(MainActivity.this);
 
                         JavResolver resolver = new JavResolver(
                                 verifyWebView,
+                                scrapeSource,
                                 (scrapeTitle, imgUrl, detailUrl) -> {
 
                                     LogUtil.i("==== 刮削完成 ====");
@@ -266,18 +342,16 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
                                     // 下载图片到本地存储
                                     // =========================
                                     if (imgUrl != null && !imgUrl.isEmpty()) {
-                                        String resolvedUrl = imgUrl.startsWith("/")
-                                                ? "https://www.javbus.com" + imgUrl
-                                                : imgUrl;
+                                        String resolvedUrl = scrapeSource.resolveImageUrl(imgUrl);
                                         downloadImageToLocal(finalItem, resolvedUrl);
                                     }
 
                                     runOnUiThread(() -> {
-                                        if (scrapeTitle != null) finalItem.setTitle(scrapeTitle);
-                                        if (imgUrl != null) finalItem.setImageUrl(imgUrl);
-
+                                        finalItem.setTitle(scrapeTitle);
+                                        finalItem.setImageUrl(imgUrl);
                                         adapter.notifyItemChanged(index);
                                         saveCacheData();
+                                        scrapeBusy = false;
                                     });
                                 });
 
@@ -287,26 +361,6 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
                 .setNegativeButton("取消", (d, i) -> d.dismiss());
 
         builder.create().show();
-    }
-
-    private void showPopupMenu(View view) {
-        PopupMenu popupMenu = new PopupMenu(this, view);
-        popupMenu.getMenuInflater().inflate(R.menu.menu_more, popupMenu.getMenu());
-        popupMenu.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == R.id.menu_export) {
-                exportJsonToDownload();
-            } else if (item.getItemId() == R.id.menu_import) {
-                openFileChooser();
-            } else if (item.getItemId() == R.id.menu_import_txt) {
-                showImportCodeListDialog();
-            } else if (item.getItemId() == R.id.menu_multi_select) {
-                openMultiSelectMode();
-            } else if (item.getItemId() == R.id.menu_log) {
-                showLogDialog();
-            }
-            return true;
-        });
-        popupMenu.show();
     }
 
     private void openMultiSelectMode() {
@@ -548,32 +602,56 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
         adapter.notifyDataSetChanged();
         saveCacheData();
 
-        // 逐条刮削，间隔3秒
-        for (int i = 0; i < newItems.size(); i++) {
-            final CardItem finalItem = newItems.get(i);
-            final String scrapeCode = finalItem.getCode();
+        // =========================
+        // 串行逐条刮削——避免多Resolver抢占同一个WebView
+        // =========================
+        final int[] scrapeIdx = {0};
+        final Handler handler = new Handler(Looper.getMainLooper());
 
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+        Runnable runNext = new Runnable() {
+            @Override
+            public void run() {
+                if (scrapeIdx[0] >= newItems.size()) {
+                    scrapeBusy = false;
+                    LogUtil.i("全部导入刮削完成");
+                    return;
+                }
+
+                scrapeBusy = true;
+                final CardItem finalItem = newItems.get(scrapeIdx[0]);
+                final String scrapeCode = finalItem.getCode();
+                scrapeIdx[0]++;
+
+                LogUtil.i("串行刮削[" + scrapeIdx[0] + "/" + newItems.size() + "] code=" + scrapeCode);
+
+                final ScrapeSource scrapeSource = ScrapeSource.getDefault(MainActivity.this);
                 JavResolver resolver = new JavResolver(
                         verifyWebView,
+                        scrapeSource,
                         (scrapeTitle, imgUrl, detailUrl) -> {
                             if (imgUrl != null && !imgUrl.isEmpty()) {
-                                String resolvedUrl = imgUrl.startsWith("/")
-                                        ? "https://www.javbus.com" + imgUrl : imgUrl;
+                                String resolvedUrl = scrapeSource.resolveImageUrl(imgUrl);
                                 downloadImageToLocal(finalItem, resolvedUrl);
                             }
-                            if (scrapeTitle != null) finalItem.setTitle(scrapeTitle);
-                            if (imgUrl != null) finalItem.setImageUrl(imgUrl);
+                            finalItem.setTitle(scrapeTitle);
+                            finalItem.setImageUrl(imgUrl);
 
                             runOnUiThread(() -> {
                                 int displayIdx = cardList.indexOf(finalItem);
                                 if (displayIdx >= 0) adapter.notifyItemChanged(displayIdx);
                                 saveCacheData();
                             });
+
+                            // 当前刮削完成 → 启动下一条（间隔2秒）
+                            handler.postDelayed(this, 2000);
                         });
+
                 resolver.startScrape(scrapeCode);
-            }, i * 3000L);
-        }
+            }
+        };
+
+        // 启动第一条（稍作延迟确保UI先渲染）
+        handler.postDelayed(runNext, 500);
 
         String msg = String.format("导入完成：\n新增%d条，重复跳过%d条，无效%d条",
                 addCount, skipCount, invalidCount);
@@ -687,55 +765,73 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
     }
 
     @Override
-    public void onScrapeToggle(int position, boolean enabled) {
+    public void onItemScrape(int position) {
         CardItem item = cardList.get(position);
-        item.setScrapeEnabled(enabled);
-        saveCacheData();
-
-        // 如果开启刮削且有番号但无标题/图片，触发刮削
-        if (enabled) {
-            String code = item.getCode();
-            if (code != null && !code.trim().isEmpty()) {
-                final int index = originList.indexOf(item);
-                if (index < 0) return;
-
-                final CardItem finalItem = item;
-
-                JavResolver resolver = new JavResolver(
-                        verifyWebView,
-                        (scrapeTitle, imgUrl, detailUrl) -> {
-
-                            LogUtil.i("==== 卡片刮削 ====");
-                            LogUtil.i("title=" + scrapeTitle);
-                            LogUtil.i("img=" + imgUrl);
-
-                            // 下载图片到本地
-                            if (imgUrl != null && !imgUrl.isEmpty()) {
-                                String resolvedUrl = imgUrl.startsWith("/")
-                                        ? "https://www.javbus.com" + imgUrl
-                                        : imgUrl;
-                                downloadImageToLocal(finalItem, resolvedUrl);
-                            }
-
-                            runOnUiThread(() -> {
-                                if (scrapeTitle != null) finalItem.setTitle(scrapeTitle);
-                                if (imgUrl != null) finalItem.setImageUrl(imgUrl);
-
-                                int displayIdx = cardList.indexOf(finalItem);
-                                if (displayIdx >= 0) adapter.notifyItemChanged(displayIdx);
-                                saveCacheData();
-                            });
-                        });
-
-                resolver.startScrape(code);
-            }
+        String code = item.getCode();
+        if (code == null || code.trim().isEmpty()) {
+            Toast.makeText(this, "无番号，无法刮削", Toast.LENGTH_SHORT).show();
+            return;
         }
+        if (scrapeBusy) {
+            Toast.makeText(this, "刮削进行中，请稍后再试", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        scrapeBusy = true;
+        final int index = originList.indexOf(item);
+        if (index < 0) return;
+
+        final CardItem finalItem = item;
+        final ScrapeSource scrapeSource = ScrapeSource.getDefault(MainActivity.this);
+
+        JavResolver resolver = new JavResolver(
+                verifyWebView,
+                scrapeSource,
+                (scrapeTitle, imgUrl, detailUrl) -> {
+
+                    LogUtil.i("==== 卡片刮削 ====");
+                    LogUtil.i("title=" + scrapeTitle);
+                    LogUtil.i("img=" + imgUrl);
+
+                    if (imgUrl != null && !imgUrl.isEmpty()) {
+                        String resolvedUrl = scrapeSource.resolveImageUrl(imgUrl);
+                        downloadImageToLocal(finalItem, resolvedUrl);
+                    }
+
+                    runOnUiThread(() -> {
+                        finalItem.setTitle(scrapeTitle);
+                        finalItem.setImageUrl(imgUrl);
+                        int displayIdx = cardList.indexOf(finalItem);
+                        if (displayIdx >= 0) adapter.notifyItemChanged(displayIdx);
+                        saveCacheData();
+                        scrapeBusy = false;
+                    });
+                });
+
+        resolver.startScrape(code);
+    }
+
+    @Override
+    public void onItemClear(int position) {
+        CardItem item = cardList.get(position);
+        LogUtil.i("清除卡片数据: " + item.getCode());
+        deleteLocalImage(item);
+        item.setTitle("");
+        item.setImageUrl("");
+        item.setLocalImagePath(null);
+
+        int displayIdx = cardList.indexOf(item);
+        if (displayIdx >= 0) adapter.notifyItemChanged(displayIdx);
+        saveCacheData();
     }
 
     // =========================
     // 下载网络图片到内部存储
     // =========================
     private void downloadImageToLocal(CardItem item, String imageUrl) {
+        if (!ScrapeSource.isValidImageUrl(imageUrl)) {
+            LogUtil.w("图片URL无效，跳过下载: " + imageUrl);
+            return;
+        }
         new Thread(() -> {
             HttpURLConnection connection = null;
             try {
@@ -743,7 +839,9 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
                 connection = (HttpURLConnection) url.openConnection();
                 connection.setRequestProperty("User-Agent",
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-                connection.setRequestProperty("Referer", "https://www.javbus.com/");
+                // 用刮削源的域名做 Referer（CDN 校验来源）
+                ScrapeSource defSource = ScrapeSource.getDefault(MainActivity.this);
+                connection.setRequestProperty("Referer", defSource.getBaseDomain());
                 connection.setConnectTimeout(10000);
                 connection.setReadTimeout(15000);
                 connection.connect();
@@ -804,6 +902,7 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
     private void showLogDialog() {
         View view = LayoutInflater.from(this).inflate(R.layout.dialog_log, null);
         TextView tvLog = view.findViewById(R.id.tvLog);
+        androidx.appcompat.widget.AppCompatButton btnCopy = view.findViewById(R.id.btnCopyLog);
         androidx.appcompat.widget.AppCompatButton btnExport = view.findViewById(R.id.btnExportLog);
         androidx.appcompat.widget.AppCompatButton btnClear = view.findViewById(R.id.btnClearLog);
 
@@ -811,8 +910,20 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(view)
-                .setPositiveButton("关闭", null)
                 .create();
+
+        btnCopy.setOnClickListener(v -> {
+            String text = tvLog.getText().toString();
+            if (text.isEmpty()) {
+                Toast.makeText(this, "日志为空", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            android.content.ClipboardManager clipboard =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            android.content.ClipData clip = android.content.ClipData.newPlainText("log", text);
+            clipboard.setPrimaryClip(clip);
+            Toast.makeText(this, "已复制到剪贴板", Toast.LENGTH_SHORT).show();
+        });
 
         btnClear.setOnClickListener(v -> {
             LogUtil.clear();
@@ -871,6 +982,360 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
                 }
             }
     );
+
+    // =========================
+    // 跳转源管理
+    // =========================
+    private void showJumpSourceDialog() {
+        List<JumpSource> sources = JumpSource.loadAll(this);
+        JumpSource current = JumpSource.getCurrent(this);
+
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_jump_source_list, null);
+        LinearLayout llSourceList = view.findViewById(R.id.llJumpSourceList);
+        androidx.appcompat.widget.AppCompatButton btnAddSource = view.findViewById(R.id.btnAddJumpSource);
+
+        refreshJumpSourceListView(llSourceList, sources, current);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(view)
+                .setPositiveButton("关闭", null)
+                .create();
+
+        btnAddSource.setOnClickListener(v -> {
+            showEditJumpSourceDialog(null, newSource -> {
+                sources.add(newSource);
+                JumpSource.saveAll(this, sources);
+                refreshJumpSourceListView(llSourceList, sources, current);
+            });
+        });
+
+        dialog.show();
+    }
+
+    private void refreshJumpSourceListView(LinearLayout container, List<JumpSource> sources, JumpSource current) {
+        container.removeAllViews();
+
+        for (int i = 0; i < sources.size(); i++) {
+            final JumpSource source = sources.get(i);
+            final int index = i;
+
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            row.setPadding(0, 8, 0, 8);
+
+            // 选中标记 + 名称 + URL
+            LinearLayout infoArea = new LinearLayout(this);
+            infoArea.setOrientation(LinearLayout.VERTICAL);
+            infoArea.setLayoutParams(new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f));
+
+            boolean isCurrent = current != null && current.getId().equals(source.getId());
+            TextView tvName = new TextView(this);
+            tvName.setText((isCurrent ? "✔ " : "") + source.getName());
+            tvName.setTextSize(14);
+            tvName.setTextColor(isCurrent ? 0xFF664FA3 : 0xFF333333);
+
+            TextView tvUrl = new TextView(this);
+            String url = source.getBaseUrl();
+            if (url.length() > 45) url = url.substring(0, 45) + "...";
+            tvUrl.setText(url);
+            tvUrl.setTextSize(10);
+            tvUrl.setTextColor(0xFF999999);
+
+            infoArea.addView(tvName);
+            infoArea.addView(tvUrl);
+
+            infoArea.setOnClickListener(v -> {
+                // 设为当前选中
+                JumpSource.setCurrent(this, source);
+                JumpSource newCurrent = JumpSource.getCurrent(this);
+                refreshJumpSourceListView(container, sources, newCurrent);
+            });
+
+            // 编辑按钮
+            androidx.appcompat.widget.AppCompatButton btnEdit = new androidx.appcompat.widget.AppCompatButton(this);
+            btnEdit.setText("编辑");
+            btnEdit.setTextSize(10);
+            btnEdit.setMinWidth(0);
+            btnEdit.setMinHeight(0);
+            btnEdit.setPadding(8, 4, 8, 4);
+            btnEdit.setOnClickListener(v -> {
+                showEditJumpSourceDialog(source, edited -> {
+                    sources.set(index, edited);
+                    JumpSource.saveAll(this, sources);
+                    refreshJumpSourceListView(container, sources, current);
+                });
+            });
+
+            // 删除按钮
+            androidx.appcompat.widget.AppCompatButton btnDelete = new androidx.appcompat.widget.AppCompatButton(this);
+            btnDelete.setText("删除");
+            btnDelete.setTextSize(10);
+            btnDelete.setTextColor(0xFFE53935);
+            btnDelete.setMinWidth(0);
+            btnDelete.setMinHeight(0);
+            btnDelete.setPadding(8, 4, 8, 4);
+            btnDelete.setOnClickListener(v -> {
+                if (sources.size() <= 1) {
+                    Toast.makeText(this, "至少保留一个跳转源", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                boolean wasCurrent = isCurrent;
+                sources.remove(index);
+                if (wasCurrent && !sources.isEmpty()) {
+                    JumpSource.setCurrent(this, sources.get(0));
+                    JumpSource newCurrent2 = JumpSource.getCurrent(this);
+                    JumpSource.saveAll(this, sources);
+                    refreshJumpSourceListView(container, sources, newCurrent2);
+                } else {
+                    JumpSource.saveAll(this, sources);
+                    refreshJumpSourceListView(container, sources, current);
+                }
+            });
+
+            row.addView(infoArea);
+            row.addView(btnEdit);
+            row.addView(btnDelete);
+            container.addView(row);
+
+            View divider = new View(this);
+            divider.setLayoutParams(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 1));
+            divider.setBackgroundColor(0xFFE0E0E0);
+            container.addView(divider);
+        }
+    }
+
+    private interface OnJumpSourceEditedListener {
+        void onEdited(JumpSource source);
+    }
+
+    private void showEditJumpSourceDialog(JumpSource existing, OnJumpSourceEditedListener listener) {
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_jump_source_edit, null);
+        EditText etName = view.findViewById(R.id.etJumpName);
+        EditText etUrl = view.findViewById(R.id.etJumpUrl);
+
+        final boolean isEdit = (existing != null);
+        if (isEdit) {
+            etName.setText(existing.getName());
+            etUrl.setText(existing.getBaseUrl());
+        }
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(isEdit ? "编辑跳转源" : "添加跳转源")
+                .setView(view)
+                .setPositiveButton("保存", (d, i) -> {
+                    String name = etName.getText().toString().trim();
+                    String url = etUrl.getText().toString().trim();
+
+                    if (name.isEmpty() || url.isEmpty()) {
+                        Toast.makeText(this, "名称和跳转地址不能为空", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    JumpSource result;
+                    if (isEdit) {
+                        existing.setName(name);
+                        existing.setBaseUrl(url);
+                        result = existing;
+                    } else {
+                        result = new JumpSource(
+                                UUID.randomUUID().toString(), name, url, false);
+                    }
+                    listener.onEdited(result);
+                })
+                .setNegativeButton("取消", null)
+                .create();
+        dialog.show();
+    }
+
+    // =========================
+    // 刮削源管理
+    // =========================
+    private void showScrapeSourceDialog() {
+        List<ScrapeSource> sources = ScrapeSource.loadAll(this);
+
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_scrape_source_list, null);
+        LinearLayout llSourceList = view.findViewById(R.id.llSourceList);
+        androidx.appcompat.widget.AppCompatButton btnAddSource = view.findViewById(R.id.btnAddSource);
+
+        refreshSourceListView(llSourceList, sources);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(view)
+                .setPositiveButton("关闭", null)
+                .create();
+
+        btnAddSource.setOnClickListener(v -> {
+            showEditSourceDialog(null, newSource -> {
+                sources.add(newSource);
+                ScrapeSource.saveAll(this, sources);
+                refreshSourceListView(llSourceList, sources);
+            });
+        });
+
+        dialog.show();
+    }
+
+    private void refreshSourceListView(LinearLayout container, List<ScrapeSource> sources) {
+        container.removeAllViews();
+
+        for (int i = 0; i < sources.size(); i++) {
+            final ScrapeSource source = sources.get(i);
+            final int index = i;
+
+            // 每行：水平布局
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            row.setPadding(0, 8, 0, 8);
+
+            // 默认标记 + 名称区域（可点击设默认）
+            LinearLayout infoArea = new LinearLayout(this);
+            infoArea.setOrientation(LinearLayout.VERTICAL);
+            infoArea.setLayoutParams(new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f));
+
+            TextView tvName = new TextView(this);
+            tvName.setText((source.isDefault() ? "★ " : "☆ ") + source.getName());
+            tvName.setTextSize(14);
+            tvName.setTextColor(source.isDefault() ? 0xFF664FA3 : 0xFF333333);
+
+            TextView tvUrl = new TextView(this);
+            String baseUrl = source.getBaseUrl();
+            if (baseUrl.length() > 40) baseUrl = baseUrl.substring(0, 40) + "...";
+            tvUrl.setText(baseUrl);
+            tvUrl.setTextSize(10);
+            tvUrl.setTextColor(0xFF999999);
+
+            infoArea.addView(tvName);
+            infoArea.addView(tvUrl);
+
+            infoArea.setOnClickListener(v -> {
+                // 设为默认
+                for (ScrapeSource s : sources) s.setDefault(false);
+                source.setDefault(true);
+                ScrapeSource.saveAll(this, sources);
+                refreshSourceListView(container, sources);
+            });
+
+            // 编辑按钮
+            androidx.appcompat.widget.AppCompatButton btnEdit = new androidx.appcompat.widget.AppCompatButton(this);
+            btnEdit.setText("编辑");
+            btnEdit.setTextSize(10);
+            btnEdit.setMinWidth(0);
+            btnEdit.setMinHeight(0);
+            btnEdit.setPadding(8, 4, 8, 4);
+            btnEdit.setOnClickListener(v -> {
+                showEditSourceDialog(source, editedSource -> {
+                    sources.set(index, editedSource);
+                    ScrapeSource.saveAll(this, sources);
+                    refreshSourceListView(container, sources);
+                });
+            });
+
+            // 删除按钮
+            androidx.appcompat.widget.AppCompatButton btnDelete = new androidx.appcompat.widget.AppCompatButton(this);
+            btnDelete.setText("删除");
+            btnDelete.setTextSize(10);
+            btnDelete.setTextColor(0xFFE53935);
+            btnDelete.setMinWidth(0);
+            btnDelete.setMinHeight(0);
+            btnDelete.setPadding(8, 4, 8, 4);
+            btnDelete.setOnClickListener(v -> {
+                if (sources.size() <= 1) {
+                    Toast.makeText(this, "至少保留一个刮削源", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                sources.remove(index);
+                // 如果删除的是默认源，第一个自动成为默认
+                if (source.isDefault() && !sources.isEmpty()) {
+                    sources.get(0).setDefault(true);
+                }
+                ScrapeSource.saveAll(this, sources);
+                refreshSourceListView(container, sources);
+            });
+
+            row.addView(infoArea);
+            row.addView(btnEdit);
+            row.addView(btnDelete);
+            container.addView(row);
+
+            // 分割线
+            View divider = new View(this);
+            divider.setLayoutParams(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 1));
+            divider.setBackgroundColor(0xFFE0E0E0);
+            container.addView(divider);
+        }
+    }
+
+    private interface OnSourceEditedListener {
+        void onEdited(ScrapeSource source);
+    }
+
+    private void showEditSourceDialog(ScrapeSource existing, OnSourceEditedListener listener) {
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_scrape_source_edit, null);
+        EditText etSourceName = view.findViewById(R.id.etSourceName);
+        EditText etSourceUrl = view.findViewById(R.id.etSourceUrl);
+        EditText etTitleXPath = view.findViewById(R.id.etTitleXPath);
+        EditText etImageXPath = view.findViewById(R.id.etImageXPath);
+        EditText etWaitSeconds = view.findViewById(R.id.etWaitSeconds);
+        SwitchCompat swNeedsPrewarm = view.findViewById(R.id.swNeedsPrewarm);
+
+        final boolean isEdit = (existing != null);
+
+        if (isEdit) {
+            etSourceName.setText(existing.getName());
+            etSourceUrl.setText(existing.getBaseUrl());
+            etTitleXPath.setText(existing.getTitleXPath());
+            etImageXPath.setText(existing.getImageXPath());
+            etWaitSeconds.setText(String.valueOf(existing.getWaitSeconds()));
+            swNeedsPrewarm.setChecked(existing.isNeedsPrewarm());
+        }
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(isEdit ? "编辑刮削源" : "添加刮削源")
+                .setView(view)
+                .setPositiveButton("保存", (d, i) -> {
+                    String name = etSourceName.getText().toString().trim();
+                    String url = etSourceUrl.getText().toString().trim();
+                    String titleXPath = etTitleXPath.getText().toString().trim();
+                    String imageXPath = etImageXPath.getText().toString().trim();
+                    String waitStr = etWaitSeconds.getText().toString().trim();
+                    int waitSec = 3;
+                    try { waitSec = Integer.parseInt(waitStr); } catch (NumberFormatException ignored) {}
+                    if (waitSec < 1) waitSec = 3;
+                    boolean needsPrewarm = swNeedsPrewarm.isChecked();
+
+                    if (name.isEmpty() || url.isEmpty()) {
+                        Toast.makeText(this, "名称和基础地址不能为空", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    ScrapeSource result;
+                    if (isEdit) {
+                        existing.setName(name);
+                        existing.setBaseUrl(url);
+                        existing.setTitleXPath(titleXPath);
+                        existing.setImageXPath(imageXPath);
+                        existing.setWaitSeconds(waitSec);
+                        existing.setNeedsPrewarm(needsPrewarm);
+                        result = existing;
+                    } else {
+                        result = new ScrapeSource(
+                                UUID.randomUUID().toString(),
+                                name, url, titleXPath, imageXPath, false);
+                        result.setWaitSeconds(waitSec);
+                        result.setNeedsPrewarm(needsPrewarm);
+                    }
+                    listener.onEdited(result);
+                })
+                .setNegativeButton("取消", null)
+                .create();
+        dialog.show();
+    }
 
     @Override
     protected void onDestroy() {

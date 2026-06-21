@@ -13,6 +13,9 @@
         android:id="@+id/menu_multi_select"
         android:title="多选模式"/>
     <item
+        android:id="@+id/menu_scrape_source"
+        android:title="刮削源"/>
+    <item
         android:id="@+id/menu_log"
         android:title="运行日志"/>
 </menu>

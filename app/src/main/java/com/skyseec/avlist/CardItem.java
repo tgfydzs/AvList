@@ -55,11 +55,11 @@ public class CardItem implements Serializable {
     }
 
     public String getTitle() {
-        return title == null ? "" : title;
+        return cleanDisplayValue(title);
     }
 
     public void setTitle(String title) {
-        this.title = title;
+        this.title = isBlankOrNullStr(title) ? "" : title;
     }
 
     public String getContent() {
@@ -71,11 +71,11 @@ public class CardItem implements Serializable {
     }
 
     public String getImageUrl() {
-        return imageUrl == null ? "" : imageUrl;
+        return cleanDisplayValue(imageUrl);
     }
 
     public void setImageUrl(String imageUrl) {
-        this.imageUrl = imageUrl;
+        this.imageUrl = isBlankOrNullStr(imageUrl) ? "" : imageUrl;
     }
 
     public long getCreateTime() {
@@ -116,6 +116,22 @@ public class CardItem implements Serializable {
     public String normalizeCode() {
         if (code == null) return "";
         return code.replaceAll("[^a-zA-Z0-9]", "").toUpperCase(Locale.ROOT);
+    }
+
+    /**
+     * 判断字符串是否为空、空串或字面值 "null" / "undefined" / "none"
+     */
+    public static boolean isBlankOrNullStr(String s) {
+        if (s == null) return true;
+        String t = s.trim();
+        return t.isEmpty() || t.equalsIgnoreCase("null") || t.equalsIgnoreCase("undefined") || t.equalsIgnoreCase("none");
+    }
+
+    /**
+     * 用于 getter 展示层过滤：把无效值转为空串，保证 UI 永不会显示 null/undefined/none
+     */
+    private static String cleanDisplayValue(String s) {
+        return isBlankOrNullStr(s) ? "" : s;
     }
 
     public static String normalizeCode(String input) {

@@ -12,7 +12,6 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.widget.AppCompatButton;
-import androidx.appcompat.widget.SwitchCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
@@ -39,7 +38,8 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
         void onItemSelected(int position, boolean isChecked);
         void onItemLongClick(int position);
         void onItemClick(int position);
-        void onScrapeToggle(int position, boolean enabled);
+        void onItemScrape(int position);
+        void onItemClear(int position);
     }
 
     public CardAdapter(Context context, List<CardItem> list, List<CardItem> selectedItems) {
@@ -113,15 +113,19 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
         } else {
             String imgUrl = item.getImageUrl();
             if (imgUrl != null && !imgUrl.trim().isEmpty()) {
+                // 相对路径补全
+                ScrapeSource defSource = ScrapeSource.getDefault(context);
                 if (imgUrl.startsWith("/")) {
-                    imgUrl = "https://www.javbus.com" + imgUrl;
+                    imgUrl = defSource.getBaseDomain() + imgUrl;
                 }
+                // 用刮削源的域名做 Referer（CDN 通常校验来源站）
+                String referer = defSource.getBaseDomain();
                 GlideUrl glideUrl = new GlideUrl(
                         imgUrl,
                         new LazyHeaders.Builder()
                                 .addHeader("User-Agent",
                                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                                .addHeader("Referer", "https://www.javbus.com/")
+                                .addHeader("Referer", referer)
                                 .build()
                 );
                 Glide.with(context)
@@ -162,7 +166,8 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
             holder.btnJump.setAlpha(1.0f);
             holder.btnJump.setBackgroundResource(R.drawable.btn_jump_bg);
             holder.btnJump.setOnClickListener(v -> {
-                String url = "https://missav.ws/search/" + CardItem.normalizeCode(jumpCode);
+                JumpSource jumpSource = JumpSource.getCurrent(context);
+                String url = jumpSource.buildUrl(CardItem.normalizeCode(jumpCode));
                 Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                 context.startActivity(intent);
             });
@@ -176,17 +181,26 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
         }
 
         // =========================
-        // 刮削开关
+        // 刮削按钮 — 纯动作，点击即刮削
         // =========================
-        holder.swScrapeCard.setOnCheckedChangeListener(null);
-        holder.swScrapeCard.setChecked(item.isScrapeEnabled());
-
-        holder.swScrapeCard.setOnCheckedChangeListener((buttonView, isChecked) -> {
+        holder.btnScrape.setOnClickListener(v -> {
             if (listener != null) {
                 int pos = holder.getAdapterPosition();
                 if (pos != RecyclerView.NO_POSITION) {
-                    item.setScrapeEnabled(isChecked);
-                    listener.onScrapeToggle(pos, isChecked);
+                    listener.onItemScrape(pos);
+                }
+            }
+        });
+
+        // 清除按钮：有标题或图片时显示
+        boolean hasScrapedData = (item.getTitle() != null && !item.getTitle().trim().isEmpty())
+                || (item.getImageUrl() != null && !item.getImageUrl().trim().isEmpty());
+        holder.btnClear.setVisibility(hasScrapedData ? View.VISIBLE : View.GONE);
+        holder.btnClear.setOnClickListener(v -> {
+            if (listener != null) {
+                int pos = holder.getAdapterPosition();
+                if (pos != RecyclerView.NO_POSITION) {
+                    listener.onItemClear(pos);
                 }
             }
         });
@@ -235,8 +249,7 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
         ImageView ivImage;
         TextView tvTitle, tvCode, tvCreateTime;
         CheckBox cbSelect;
-        SwitchCompat swScrapeCard;
-        AppCompatButton btnJump;
+        AppCompatButton btnJump, btnScrape, btnClear;
 
         public CardViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -246,7 +259,8 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
             tvCode = itemView.findViewById(R.id.tvCode);
             tvCreateTime = itemView.findViewById(R.id.tvCreateTime);
             cbSelect = itemView.findViewById(R.id.cbSelect);
-            swScrapeCard = itemView.findViewById(R.id.swScrapeCard);
+            btnScrape = itemView.findViewById(R.id.btnScrape);
+            btnClear = itemView.findViewById(R.id.btnClear);
             btnJump = itemView.findViewById(R.id.btnJump);
         }
     }
