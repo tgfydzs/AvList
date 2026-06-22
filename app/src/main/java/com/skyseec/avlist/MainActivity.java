@@ -1,7 +1,12 @@
 package com.skyseec.avlist;
 
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.net.Uri;
+import android.os.Build;
 import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import android.os.Bundle;
@@ -27,6 +32,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.recyclerview.widget.StaggeredGridLayoutManager;
+import com.bumptech.glide.Glide;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.skyseec.avlist.databinding.ActivityMainBinding;
@@ -38,10 +44,9 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.lang.reflect.Type;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -58,7 +63,39 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
     private boolean isMultiMode = false;
     private DrawerLayout drawerLayout;
     private X5WebView verifyWebView;
-    private volatile boolean scrapeBusy = false;
+
+    // 排序状态
+    private enum SortField { RATING, TIME, CODE }
+    private SortField currentSortField = SortField.TIME;
+    private boolean sortAscending = false;  // false=降序(默认), true=升序
+    private String currentSearchKeyword = "";
+
+    // 刮削进度广播接收器
+    private final BroadcastReceiver scrapeProgressReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            loadCacheData();
+        }
+    };
+
+    // 系统图片选择器（注意：currentAddDialogView 必须在 pickImageLauncher 之前声明）
+    private View currentAddDialogView;
+    private Uri pendingImagePickUri;
+    private final ActivityResultLauncher<String> pickImageLauncher = registerForActivityResult(
+            new ActivityResultContracts.GetContent(),
+            uri -> {
+                if (uri != null) {
+                    pendingImagePickUri = uri;
+                    if (currentAddDialogView != null) {
+                        ImageView preview = currentAddDialogView.findViewById(R.id.ivImagePreview);
+                        if (preview != null) {
+                            preview.setVisibility(View.VISIBLE);
+                            Glide.with(MainActivity.this).load(uri).dontTransform().into(preview);
+                        }
+                    }
+                }
+            }
+    );
 
     private final ActivityResultLauncher<Intent> selectFileLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -164,6 +201,8 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
         binding.btnMore.setOnClickListener(v ->
                 drawerLayout.openDrawer(GravityCompat.END));
 
+        binding.btnSort.setOnClickListener(v -> showSortDialog());
+
         // 右滑打开抽屉：触摸起点在屏幕30%位置右侧，左滑超过40dp触发
         binding.contentLayout.setOnTouchListener(
                 new DrawerEdgeHelper(drawerLayout, 0.3f, 40)
@@ -197,6 +236,10 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
             drawerLayout.closeDrawer(GravityCompat.END);
             showLogDialog();
         });
+        binding.drawerGuide.setOnClickListener(v -> {
+            drawerLayout.closeDrawer(GravityCompat.END);
+            showGuideDialog();
+        });
 
         EditText etSearch = binding.etSearch;
         ImageView ivClear = binding.ivClear;
@@ -227,6 +270,21 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
         binding.btnBatchMoveOut.setOnClickListener(v -> batchMoveOut());
         binding.btnBatchExport.setOnClickListener(v -> batchExport());
         binding.fabAdd.setOnClickListener(v -> showAddDialog());
+
+        // 首次启动弹窗
+        checkFirstLaunch();
+    }
+
+    /**
+     * 首次启动显示使用说明弹窗
+     */
+    private void checkFirstLaunch() {
+        SharedPreferences sp = getSharedPreferences("guide_prefs", MODE_PRIVATE);
+        boolean shown = sp.getBoolean("guide_shown", false);
+        if (!shown) {
+            sp.edit().putBoolean("guide_shown", true).apply();
+            new Handler(Looper.getMainLooper()).postDelayed(this::showGuideDialog, 600);
+        }
     }
 
     @Override
@@ -239,6 +297,26 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
     protected void onResume() {
         super.onResume();
         tryShowAddFromTile();
+
+        // 注册刮削进度广播（Android 14+ 需指定 flag）
+        IntentFilter filter = new IntentFilter(ScrapeService.BROADCAST_PROGRESS);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(scrapeProgressReceiver, filter, RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(scrapeProgressReceiver, filter);
+        }
+
+        // 刷新数据（后台刮削可能已更新）
+        loadCacheData();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // 取消注册广播
+        try {
+            unregisterReceiver(scrapeProgressReceiver);
+        } catch (IllegalArgumentException ignored) {}
     }
 
     private void tryShowAddFromTile() {
@@ -289,6 +367,35 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
         EditText etRemark = view.findViewById(R.id.etRemark);
         SwitchCompat swScrape = view.findViewById(R.id.swScrape);
         Spinner spScrapeSource = view.findViewById(R.id.spScrapeSource);
+        androidx.appcompat.widget.AppCompatButton btnPickImage = view.findViewById(R.id.btnPickImage);
+        ImageView ivPreview = view.findViewById(R.id.ivImagePreview);
+        LinearLayout llRating = view.findViewById(R.id.llRating);
+        ImageView[] dialogStars = new ImageView[]{
+                view.findViewById(R.id.ivDialogStar1),
+                view.findViewById(R.id.ivDialogStar2),
+                view.findViewById(R.id.ivDialogStar3),
+                view.findViewById(R.id.ivDialogStar4),
+                view.findViewById(R.id.ivDialogStar5)
+        };
+        final int[] addRating = {0};
+        for (int si = 0; si < dialogStars.length; si++) {
+            final int starValue = si + 1;
+            dialogStars[si].setOnClickListener(v -> {
+                addRating[0] = starValue;
+                for (int j = 0; j < dialogStars.length; j++) {
+                    dialogStars[j].setImageResource(
+                            j < starValue ? android.R.drawable.btn_star_big_on : android.R.drawable.btn_star_big_off
+                    );
+                }
+            });
+        }
+
+        // 保存引用以便 pickImageLauncher 回调刷新预览
+        currentAddDialogView = view;
+        pendingImagePickUri = null;
+
+        // 图片选择按钮
+        btnPickImage.setOnClickListener(v -> pickImageLauncher.launch("image/*"));
 
         // 填充刮削源选择器
         List<ScrapeSource> allSources = ScrapeSource.loadAll(this);
@@ -351,6 +458,7 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
                             normalizedCode,
                             swScrape.isChecked()
                     );
+                    item.setRating(addRating[0]);
 
                     // 提前捕获刮削源（dismiss前）
                     final int selectedSrcIdx = spScrapeSource.getSelectedItemPosition();
@@ -358,6 +466,13 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
                             ? allSources.get(selectedSrcIdx) : ScrapeSource.getDefault(MainActivity.this);
 
                     dialogInterface.dismiss();
+
+                    // 复制选中的本地图片
+                    if (pendingImagePickUri != null) {
+                        copyImageToLocal(pendingImagePickUri, item.getId());
+                        pendingImagePickUri = null;
+                    }
+                    currentAddDialogView = null;
 
                     originList.add(0, item);
                     cardList.add(0, item);
@@ -369,45 +484,17 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
                     // 2. 异步刮削（仅在开关打开且番号非空时）
                     // =========================
                     if (doScrape) {
-                        if (scrapeBusy) {
-                            LogUtil.w("刮削忙，跳过添加后刮削");
-                            return;
-                        }
-                        scrapeBusy = true;
-                        final int index = 0;
-                        final CardItem finalItem = item;
-                        final ScrapeSource scrapeSource = selectedSrc;
-
-                        JavResolver resolver = new JavResolver(
-                                verifyWebView,
-                                scrapeSource,
-                                (scrapeTitle, imgUrl, detailUrl) -> {
-
-                                    LogUtil.i("==== 刮削完成 ====");
-                                    LogUtil.i("title=" + scrapeTitle);
-                                    LogUtil.i("img=" + imgUrl);
-
-                                    // =========================
-                                    // 下载图片到本地存储
-                                    // =========================
-                                    if (imgUrl != null && !imgUrl.isEmpty()) {
-                                        String resolvedUrl = scrapeSource.resolveImageUrl(imgUrl);
-                                        downloadImageToLocal(finalItem, resolvedUrl);
-                                    }
-
-                                    runOnUiThread(() -> {
-                                        finalItem.setTitle(scrapeTitle);
-                                        finalItem.setImageUrl(imgUrl);
-                                        adapter.notifyItemChanged(index);
-                                        saveCacheData();
-                                        scrapeBusy = false;
-                                    });
-                                });
-
-                        resolver.startScrape(code);
+                        // 入队到后台刮削服务
+                        ScrapeTask task = ScrapeTask.from(item, selectedSrc);
+                        ScrapeService.enqueue(MainActivity.this, task);
+                        LogUtil.i("刮削任务已入队: " + normalizedCode);
                     }
                 })
-                .setNegativeButton("取消", (d, i) -> d.dismiss());
+                .setNegativeButton("取消", (d, i) -> {
+                    pendingImagePickUri = null;
+                    currentAddDialogView = null;
+                    d.dismiss();
+                });
 
         builder.create().show();
     }
@@ -589,9 +676,7 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
                 }
             }
 
-            cardList.clear();
-            cardList.addAll(originList);
-            adapter.notifyDataSetChanged();
+            applySortAndFilter();
             saveCacheData();
 
             String msg = String.format("导入完成：\n新增%d条，重复跳过%d条，辨识码无效%d条",
@@ -646,61 +731,21 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
             addCount++;
         }
 
-        cardList.clear();
-        cardList.addAll(originList);
-        adapter.notifyDataSetChanged();
+        applySortAndFilter();
         saveCacheData();
 
         // =========================
-        // 串行逐条刮削——避免多Resolver抢占同一个WebView
+        // 批量入队后台刮削服务（服务内部串行处理）
         // =========================
-        final int[] scrapeIdx = {0};
-        final Handler handler = new Handler(Looper.getMainLooper());
-
-        Runnable runNext = new Runnable() {
-            @Override
-            public void run() {
-                if (scrapeIdx[0] >= newItems.size()) {
-                    scrapeBusy = false;
-                    LogUtil.i("全部导入刮削完成");
-                    return;
-                }
-
-                scrapeBusy = true;
-                final CardItem finalItem = newItems.get(scrapeIdx[0]);
-                final String scrapeCode = finalItem.getCode();
-                scrapeIdx[0]++;
-
-                LogUtil.i("串行刮削[" + scrapeIdx[0] + "/" + newItems.size() + "] code=" + scrapeCode);
-
-                final ScrapeSource scrapeSource = ScrapeSource.getDefault(MainActivity.this);
-                JavResolver resolver = new JavResolver(
-                        verifyWebView,
-                        scrapeSource,
-                        (scrapeTitle, imgUrl, detailUrl) -> {
-                            if (imgUrl != null && !imgUrl.isEmpty()) {
-                                String resolvedUrl = scrapeSource.resolveImageUrl(imgUrl);
-                                downloadImageToLocal(finalItem, resolvedUrl);
-                            }
-                            finalItem.setTitle(scrapeTitle);
-                            finalItem.setImageUrl(imgUrl);
-
-                            runOnUiThread(() -> {
-                                int displayIdx = cardList.indexOf(finalItem);
-                                if (displayIdx >= 0) adapter.notifyItemChanged(displayIdx);
-                                saveCacheData();
-                            });
-
-                            // 当前刮削完成 → 启动下一条（间隔2秒）
-                            handler.postDelayed(this, 2000);
-                        });
-
-                resolver.startScrape(scrapeCode);
+        if (!newItems.isEmpty()) {
+            final ScrapeSource defaultSource = ScrapeSource.getDefault(MainActivity.this);
+            List<ScrapeTask> tasks = new ArrayList<>();
+            for (CardItem item : newItems) {
+                tasks.add(ScrapeTask.from(item, defaultSource));
             }
-        };
-
-        // 启动第一条（稍作延迟确保UI先渲染）
-        handler.postDelayed(runNext, 500);
+            ScrapeService.enqueueAll(MainActivity.this, tasks);
+            LogUtil.i("批量导入: " + tasks.size() + " 个刮削任务已入队");
+        }
 
         String msg = String.format("导入完成：\n新增%d条，重复跳过%d条，无效%d条",
                 addCount, skipCount, invalidCount);
@@ -740,13 +785,18 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
     }
 
     private void filterData(String keyword) {
-        cardList.clear();
-        String raw = (keyword == null ? "" : keyword).trim();
-        if (raw.isEmpty()) {
-            cardList.addAll(originList);
+        currentSearchKeyword = (keyword == null ? "" : keyword).trim();
+        applySortAndFilter();
+    }
+
+    private void applySortAndFilter() {
+        // 1. 先过滤
+        List<CardItem> filtered;
+        if (currentSearchKeyword.isEmpty()) {
+            filtered = new ArrayList<>(originList);
         } else {
-            // 按空格拆成多个 token，每个 token 必须在至少一个字段中命中
-            String[] tokens = raw.toLowerCase().split("\\s+");
+            filtered = new ArrayList<>();
+            String[] tokens = currentSearchKeyword.toLowerCase().split("\\s+");
 
             for (CardItem item : originList) {
                 String title = item.getTitle() == null ? "" : item.getTitle().toLowerCase();
@@ -770,10 +820,38 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
                 }
 
                 if (allMatch) {
-                    cardList.add(item);
+                    filtered.add(item);
                 }
             }
         }
+
+        // 2. 再排序
+        java.util.Comparator<CardItem> comparator;
+        switch (currentSortField) {
+            case RATING:
+                comparator = Comparator.comparingInt(CardItem::getRating);
+                break;
+            case TIME:
+                comparator = Comparator.comparingLong(CardItem::getCreateTime);
+                break;
+            case CODE:
+            default:
+                comparator = Comparator.comparing(c ->
+                        c.getCode() != null ? CardItem.normalizeCode(c.getCode()) : "");
+                break;
+        }
+        if (!sortAscending) {
+            comparator = comparator.reversed();
+        }
+        // 二级排序：同星级/同时间/同首字母时按时间降序
+        if (currentSortField != SortField.TIME) {
+            comparator = comparator.thenComparing(
+                    java.util.Comparator.comparingLong(CardItem::getCreateTime).reversed());
+        }
+        filtered.sort(comparator);
+
+        cardList.clear();
+        cardList.addAll(filtered);
         adapter.notifyDataSetChanged();
     }
 
@@ -792,9 +870,7 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
         List<CardItem> cacheList = gson.fromJson(json, type);
         originList.clear();
         originList.addAll(cacheList);
-        cardList.clear();
-        cardList.addAll(cacheList);
-        adapter.notifyDataSetChanged();
+        applySortAndFilter();
     }
 
     @Override
@@ -821,49 +897,12 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
             Toast.makeText(this, "无番号，无法刮削", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (scrapeBusy) {
-            Toast.makeText(this, "刮削进行中，请稍后再试", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        scrapeBusy = true;
-        final int index = originList.indexOf(item);
-        if (index < 0) return;
 
-        final CardItem finalItem = item;
         final ScrapeSource scrapeSource = ScrapeSource.getDefault(MainActivity.this);
-        final boolean skipOverwrite = item.isUserEdited();
-
-        if (skipOverwrite) {
-            LogUtil.i("刮削跳过（用户已编辑）: " + code);
-        }
-
-        JavResolver resolver = new JavResolver(
-                verifyWebView,
-                scrapeSource,
-                (scrapeTitle, imgUrl, detailUrl) -> {
-
-                    LogUtil.i("==== 卡片刮削 ====");
-                    LogUtil.i("title=" + scrapeTitle);
-                    LogUtil.i("img=" + imgUrl);
-
-                    if (imgUrl != null && !imgUrl.isEmpty()) {
-                        String resolvedUrl = scrapeSource.resolveImageUrl(imgUrl);
-                        downloadImageToLocal(finalItem, resolvedUrl);
-                    }
-
-                    runOnUiThread(() -> {
-                        if (!skipOverwrite) {
-                            finalItem.setTitle(scrapeTitle);
-                            finalItem.setImageUrl(imgUrl);
-                        }
-                        int displayIdx = cardList.indexOf(finalItem);
-                        if (displayIdx >= 0) adapter.notifyItemChanged(displayIdx);
-                        saveCacheData();
-                        scrapeBusy = false;
-                    });
-                });
-
-        resolver.startScrape(code);
+        ScrapeTask task = ScrapeTask.from(item, scrapeSource);
+        ScrapeService.enqueue(MainActivity.this, task);
+        LogUtil.i("手动刮削已入队: " + code);
+        Toast.makeText(this, "刮削已加入队列", Toast.LENGTH_SHORT).show();
     }
 
     @Override
@@ -881,62 +920,31 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
     }
 
     // =========================
-    // 下载网络图片到内部存储
+    // 从系统相册复制图片到内部存储
     // =========================
-    private void downloadImageToLocal(CardItem item, String imageUrl) {
-        if (!ScrapeSource.isValidImageUrl(imageUrl)) {
-            LogUtil.w("图片URL无效，跳过下载: " + imageUrl);
-            return;
-        }
-        new Thread(() -> {
-            HttpURLConnection connection = null;
-            try {
-                URL url = new URL(imageUrl);
-                connection = (HttpURLConnection) url.openConnection();
-                connection.setRequestProperty("User-Agent",
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-                // 用刮削源的域名做 Referer（CDN 校验来源）
-                ScrapeSource defSource = ScrapeSource.getDefault(MainActivity.this);
-                connection.setRequestProperty("Referer", defSource.getBaseDomain());
-                connection.setConnectTimeout(10000);
-                connection.setReadTimeout(15000);
-                connection.connect();
-
-                if (connection.getResponseCode() == 200) {
-                    InputStream is = connection.getInputStream();
-
-                    File dir = new File(getFilesDir(), "images");
-                    if (!dir.exists()) dir.mkdirs();
-
-                    File outFile = new File(dir, item.getId() + ".jpg");
-                    FileOutputStream fos = new FileOutputStream(outFile);
-
-                    byte[] buffer = new byte[4096];
-                    int len;
-                    while ((len = is.read(buffer)) != -1) {
-                        fos.write(buffer, 0, len);
-                    }
-
-                    fos.flush();
-                    fos.close();
-                    is.close();
-
-                    item.setLocalImagePath(outFile.getAbsolutePath());
-
-                    LogUtil.i("图片已保存到本地: " + outFile.getAbsolutePath());
-
-                    // 刷新卡片显示
-                    runOnUiThread(() -> {
-                        int idx = cardList.indexOf(item);
-                        if (idx >= 0) adapter.notifyItemChanged(idx);
-                    });
-                }
-            } catch (Exception e) {
-                LogUtil.e("图片下载失败", e);
-            } finally {
-                if (connection != null) connection.disconnect();
+    private void copyImageToLocal(Uri sourceUri, String cardId) {
+        try {
+            InputStream is = getContentResolver().openInputStream(sourceUri);
+            if (is == null) {
+                LogUtil.w("无法打开图片: " + sourceUri);
+                return;
             }
-        }).start();
+            File dir = new File(getFilesDir(), "images");
+            if (!dir.exists()) dir.mkdirs();
+            File outFile = new File(dir, cardId + ".jpg");
+            FileOutputStream fos = new FileOutputStream(outFile);
+            byte[] buf = new byte[4096];
+            int len;
+            while ((len = is.read(buf)) != -1) {
+                fos.write(buf, 0, len);
+            }
+            fos.flush();
+            fos.close();
+            is.close();
+            LogUtil.i("本地图片已保存: " + outFile.getAbsolutePath());
+        } catch (Exception e) {
+            LogUtil.e("复制图片失败", e);
+        }
     }
 
     // =========================
@@ -953,6 +961,43 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
         } catch (Exception e) {
             LogUtil.e("删除本地图片异常", e);
         }
+    }
+
+    // =========================
+    // 排序对话框
+    // =========================
+    private void showSortDialog() {
+        String[] fieldNames = {"星级", "添加时间", "番号首字母"};
+        SortField[] fields = {SortField.RATING, SortField.TIME, SortField.CODE};
+
+        // 构建带方向指示的选项文字
+        String[] items = new String[fieldNames.length];
+        for (int i = 0; i < fields.length; i++) {
+            String arrow = "";
+            if (fields[i] == currentSortField) {
+                arrow = sortAscending ? " ↑" : " ↓";
+            }
+            items[i] = fieldNames[i] + arrow;
+        }
+
+        final int[] checkedItem = {java.util.Arrays.asList(fields).indexOf(currentSortField)};
+
+        new AlertDialog.Builder(this)
+                .setTitle("排序方式")
+                .setSingleChoiceItems(items, checkedItem[0], (dialog, which) -> {
+                    if (fields[which] == currentSortField) {
+                        // 同字段 → 切换方向
+                        sortAscending = !sortAscending;
+                    } else {
+                        currentSortField = fields[which];
+                        sortAscending = false; // 切换字段默认降序
+                    }
+                    applySortAndFilter();
+                    dialog.dismiss();
+                })
+                .setNegativeButton("取消", null)
+                .create()
+                .show();
     }
 
     private void showLogDialog() {
@@ -1391,6 +1436,77 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
                 .setNegativeButton("取消", null)
                 .create();
         dialog.show();
+    }
+
+    // =========================
+    // 使用说明弹窗
+    // =========================
+    private static final String GUIDE_PREFS = "guide_prefs";
+    private static final String KEY_GUIDE_CONTENT = "guide_content";
+    private static final String DEFAULT_GUIDE =
+            "欢迎使用 AvList！\n\n"
+                    + "• 点击右下角 + 添加卡片\n"
+                    + "• 填写番号后可自动刮削获取标题和封面\n"
+                    + "• 长按卡片进入多选模式\n"
+                    + "• 右滑(没写好呢)或点击右上角菜单查看更多功能\n"
+                    + "• 支持 JSON 导入/导出备份数据\n\n"
+                    + "提示：刮削在后台服务中运行，息屏也不中断\n"
+                    + "卡片所有字段都可为空，仅番号做唯一性限制\n"
+                    + "卡片只显示番号、标题、图片";
+
+    private void showGuideDialog() {
+        String content = getSharedPreferences(GUIDE_PREFS, MODE_PRIVATE)
+                .getString(KEY_GUIDE_CONTENT, DEFAULT_GUIDE);
+
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_guide, null);
+        TextView tvContent = view.findViewById(R.id.tvGuideContent);
+        EditText etContent = view.findViewById(R.id.etGuideContent);
+
+        tvContent.setText(content);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("使用说明")
+                .setView(view)
+                .setPositiveButton("知道了", null)
+                .setNeutralButton("编辑", (d, i) -> {
+                    // 切换到编辑模式
+                    etContent.setText(tvContent.getText().toString());
+                    tvContent.setVisibility(View.GONE);
+                    etContent.setVisibility(View.VISIBLE);
+                    d.dismiss();
+                    showGuideEditDialog(etContent.getText().toString());
+                })
+                .create();
+        dialog.show();
+    }
+
+    private void showGuideEditDialog(String currentContent) {
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_guide, null);
+        TextView tvContent = view.findViewById(R.id.tvGuideContent);
+        EditText etContent = view.findViewById(R.id.etGuideContent);
+
+        // 直接显示编辑模式
+        tvContent.setVisibility(View.GONE);
+        etContent.setVisibility(View.VISIBLE);
+        etContent.setText(currentContent);
+
+        new AlertDialog.Builder(this)
+                .setTitle("编辑使用说明")
+                .setView(view)
+                .setPositiveButton("保存", (d, i) -> {
+                    String newContent = etContent.getText().toString().trim();
+                    if (newContent.isEmpty()) {
+                        newContent = DEFAULT_GUIDE;
+                    }
+                    getSharedPreferences(GUIDE_PREFS, MODE_PRIVATE)
+                            .edit()
+                            .putString(KEY_GUIDE_CONTENT, newContent)
+                            .apply();
+                    Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("取消", null)
+                .create()
+                .show();
     }
 
     @Override

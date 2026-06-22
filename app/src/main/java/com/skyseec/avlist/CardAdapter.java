@@ -8,6 +8,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.CheckBox;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -96,6 +97,23 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
         holder.tvCreateTime.setText(
                 sdf.format(new Date(item.getCreateTime()))
         );
+
+        // =========================
+        // 评分星级
+        // =========================
+        int rating = item.getRating();
+        if (rating > 0) {
+            holder.llRating.setVisibility(View.VISIBLE);
+            for (int i = 0; i < 5; i++) {
+                holder.starViews[i].setImageResource(
+                        i < rating
+                                ? android.R.drawable.btn_star_big_on
+                                : android.R.drawable.btn_star_big_off
+                );
+            }
+        } else {
+            holder.llRating.setVisibility(View.GONE);
+        }
 
         // =========================
         // 图片：优先本地，其次网络，无图时隐藏 ImageView
@@ -250,6 +268,8 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
         TextView tvTitle, tvCode, tvCreateTime;
         CheckBox cbSelect;
         AppCompatButton btnJump, btnScrape, btnClear;
+        LinearLayout llRating;
+        ImageView[] starViews;
 
         public CardViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -262,6 +282,14 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
             btnScrape = itemView.findViewById(R.id.btnScrape);
             btnClear = itemView.findViewById(R.id.btnClear);
             btnJump = itemView.findViewById(R.id.btnJump);
+            llRating = itemView.findViewById(R.id.llRating);
+            starViews = new ImageView[]{
+                    itemView.findViewById(R.id.ivStar1),
+                    itemView.findViewById(R.id.ivStar2),
+                    itemView.findViewById(R.id.ivStar3),
+                    itemView.findViewById(R.id.ivStar4),
+                    itemView.findViewById(R.id.ivStar5)
+            };
         }
     }
 }

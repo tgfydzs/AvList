@@ -33,6 +33,31 @@
         android:hint="图片网络链接"
         android:layout_marginTop="8dp"/>
 
+    <LinearLayout
+        android:id="@+id/llImagePickRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="6dp">
+
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/btnPickImage"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="选择本地图片"
+            android:textSize="13sp"
+            android:paddingHorizontal="12dp"/>
+
+        <ImageView
+            android:id="@+id/ivImagePreview"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_marginStart="10dp"
+            android:scaleType="centerCrop"
+            android:visibility="gone"/>
+    </LinearLayout>
+
     <EditText
         android:id="@+id/etTag"
         android:layout_width="match_parent"
@@ -47,6 +72,77 @@
         android:hint="详细备注信息"
         android:lines="3"
         android:layout_marginTop="8dp"/>
+
+    <LinearLayout
+        android:id="@+id/llRating"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="评分："
+            android:textSize="13sp"
+            android:textColor="#666666"/>
+
+        <ImageView
+            android:id="@+id/ivDialogStar1"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:scaleType="fitCenter"
+            android:padding="4dp"
+            android:src="@android:drawable/btn_star_big_off"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless"/>
+
+        <ImageView
+            android:id="@+id/ivDialogStar2"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:scaleType="fitCenter"
+            android:padding="4dp"
+            android:src="@android:drawable/btn_star_big_off"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless"/>
+
+        <ImageView
+            android:id="@+id/ivDialogStar3"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:scaleType="fitCenter"
+            android:padding="4dp"
+            android:src="@android:drawable/btn_star_big_off"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless"/>
+
+        <ImageView
+            android:id="@+id/ivDialogStar4"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:scaleType="fitCenter"
+            android:padding="4dp"
+            android:src="@android:drawable/btn_star_big_off"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless"/>
+
+        <ImageView
+            android:id="@+id/ivDialogStar5"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:scaleType="fitCenter"
+            android:padding="4dp"
+            android:src="@android:drawable/btn_star_big_off"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless"/>
+    </LinearLayout>
 
     <LinearLayout
         android:id="@+id/llScrapeRow"

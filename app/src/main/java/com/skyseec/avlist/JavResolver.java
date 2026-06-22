@@ -14,9 +14,12 @@ public class JavResolver {
     private boolean parseDone;
     private int retryCount;
     private static final int MAX_RETRIES = 2;
+    private static final int TIMEOUT_MS = 90_000; // 单次刮削整体超时
     private String scrapeKeyword;
     private long stageStartTime;
     private long overallStartTime;
+    private Handler timeoutHandler;
+    private boolean timedOut;
 
     public interface ResolveCallback {
         void onResult(String title, String imgUrl, String detailUrl);
@@ -34,11 +37,13 @@ public class JavResolver {
     public void startScrape(String keyword) {
         if (source == null) {
             LogUtil.w("【刮削】源为空，无法刮削");
+            cancelTimeout();
             callback.onResult(null, null, null);
             return;
         }
         this.scrapeKeyword = keyword;
         this.retryCount = 0;
+        this.timedOut = false;
         this.overallStartTime = System.currentTimeMillis();
 
         LogUtil.i("══════ 刮削开始 ══════");
@@ -48,6 +53,9 @@ public class JavResolver {
         LogUtil.i("【预热】" + source.isNeedsPrewarm() + " 等待=" + source.getWaitSeconds() + "s");
         LogUtil.i("【标题XPath】" + source.getTitleXPath());
         LogUtil.i("【图片XPath】" + source.getImageXPath());
+
+        // 启动整体超时（90秒后强制结束）
+        startTimeout();
 
         if (source.isNeedsPrewarm()) {
             prewarmThenSearch();
@@ -297,6 +305,7 @@ public class JavResolver {
             String raw = result;
             if (raw == null) {
                 LogUtil.e("【解析】evaluateJavascript返回null", null);
+                cancelTimeout();
                 callback.onResult(null, null, view.getUrl());
                 return;
             }
@@ -343,8 +352,34 @@ public class JavResolver {
             long total = System.currentTimeMillis() - overallStartTime;
             LogUtil.i("══════ 刮削结束 总耗时=" + total + "ms ══════");
 
+            cancelTimeout();
             callback.onResult(title, img, view.getUrl());
         });
+    }
+
+    // =====================================================================
+    // 超时处理
+    // =====================================================================
+    private void startTimeout() {
+        cancelTimeout();
+        timeoutHandler = new Handler(Looper.getMainLooper());
+        timeoutHandler.postDelayed(() -> {
+            if (!parseDone && !timedOut) {
+                timedOut = true;
+                parseDone = true;
+                LogUtil.e("【超时】刮削超过" + (TIMEOUT_MS / 1000) + "秒，强制结束", null);
+                webView.stopLoading();
+                webView.stopReadyCheck();
+                callback.onResult(null, null, null);
+            }
+        }, TIMEOUT_MS);
+    }
+
+    private void cancelTimeout() {
+        if (timeoutHandler != null) {
+            timeoutHandler.removeCallbacksAndMessages(null);
+            timeoutHandler = null;
+        }
     }
 
     // =====================================================================

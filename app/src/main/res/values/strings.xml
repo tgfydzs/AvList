@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">AvList</string>
+    <string name="scrape_channel_name">刮削服务</string>
+    <string name="scrape_channel_desc">显示后台刮削进度</string>
 </resources>

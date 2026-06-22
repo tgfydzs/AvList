@@ -54,7 +54,7 @@
                         android:layout_weight="1"
                         android:layout_marginStart="8dp"
                         android:background="@null"
-                        android:hint="搜索番号、标题、标签、备注"
+                        android:hint="搜索番号、标题、标签、备注、内容"
                         android:textColor="#FFFFFF"
                         android:textColorHint="#AAFFFFFF"
                         android:textSize="14sp"
@@ -77,10 +77,19 @@
             </androidx.cardview.widget.CardView>
 
             <androidx.appcompat.widget.AppCompatImageButton
+                android:id="@+id/btnSort"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="4dp"
+                android:src="@android:drawable/ic_menu_sort_by_size"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="排序"/>
+
+            <androidx.appcompat.widget.AppCompatImageButton
                 android:id="@+id/btnMore"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:layout_marginStart="8dp"
+                android:layout_marginStart="4dp"
                 android:src="@drawable/ic_more_vert"
                 android:background="?attr/selectableItemBackgroundBorderless"/>
         </LinearLayout>
@@ -119,7 +128,7 @@
                 android:id="@+id/btnBatchDelete"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="批量删除"
+                android:text="删除"
                 android:layout_marginEnd="16dp"/>
 
             <androidx.appcompat.widget.AppCompatButton
@@ -133,7 +142,7 @@
                 android:id="@+id/btnBatchExport"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="批量导出"/>
+                android:text="导出"/>
         </LinearLayout>
 
         <com.google.android.material.floatingactionbutton.FloatingActionButton
@@ -261,6 +270,26 @@
             android:paddingStart="20dp"
             android:paddingEnd="20dp"
             android:background="?attr/selectableItemBackground"/>
+
+        <!-- 使用说明 -->
+        <TextView
+            android:id="@+id/drawer_guide"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="使用说明"
+            android:textSize="15sp"
+            android:textColor="#333333"
+            android:gravity="center_vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:background="?attr/selectableItemBackground"/>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#E0E0E0"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginVertical="4dp"/>
 
         <!-- 运行日志 -->
         <TextView
