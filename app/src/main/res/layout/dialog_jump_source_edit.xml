@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <EditText
+        android:id="@+id/etJumpName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="源名称（如 MissAV）"/>
+
+    <EditText
+        android:id="@+id/etJumpUrl"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="跳转地址（番号占位: {keyword}）"
+        android:layout_marginTop="12dp"/>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="提示：{keyword} 将被替换为卡片的标准化番号（字母数字大写）。如要保留原格式，请使用 {keyword} 而非直接拼接。"
+        android:textSize="11sp"
+        android:textColor="#888888"
+        android:lineSpacingExtra="2dp"/>
+
+</LinearLayout>

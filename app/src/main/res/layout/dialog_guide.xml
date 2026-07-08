@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxHeight="400dp">
+
+        <TextView
+            android:id="@+id/tvGuideContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:textColor="#333333"
+            android:lineSpacingExtra="4dp"/>
+
+    </ScrollView>
+
+    <EditText
+        android:id="@+id/etGuideContent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:minHeight="200dp"
+        android:gravity="top"
+        android:hint="填写使用说明内容..."
+        android:visibility="gone"/>
+
+</LinearLayout>

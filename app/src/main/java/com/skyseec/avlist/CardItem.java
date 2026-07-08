@@ -16,6 +16,7 @@ public class CardItem implements Serializable {
     private String tag;
     private String code;
     private int rating = 0;  // 评分 0-5，0 表示未评分
+    private int jumpCount = 0;  // 跳转次数
     private boolean scrapeEnabled = true;
     private boolean userEdited = false;  // 用户手动编辑过 → 刮削不再覆盖标题/图片
     private transient String localImagePath; // transient: 不序列化到 JSON，运行时从内部存储推导
@@ -172,6 +173,14 @@ public class CardItem implements Serializable {
 
     public void setRating(int rating) {
         this.rating = Math.max(0, Math.min(5, rating));
+    }
+
+    public int getJumpCount() {
+        return jumpCount;
+    }
+
+    public void setJumpCount(int jumpCount) {
+        this.jumpCount = Math.max(0, jumpCount);
     }
 
     public String getLocalImagePath() {

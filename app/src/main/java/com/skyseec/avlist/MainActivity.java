@@ -65,7 +65,7 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
     private X5WebView verifyWebView;
 
     // 排序状态
-    private enum SortField { RATING, TIME, CODE }
+    private enum SortField { RATING, JUMP_COUNT, TIME, CODE }
     private SortField currentSortField = SortField.TIME;
     private boolean sortAscending = false;  // false=降序(默认), true=升序
     private String currentSearchKeyword = "";
@@ -117,6 +117,7 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
                 if (result.getResultCode() == RESULT_OK && result.getData() != null && pendingExportJson != null) {
                     Uri uri = result.getData().getData();
                     writeJsonToUri(uri, pendingExportJson);
+                    BackupManager.recordBackupDone(MainActivity.this);
                     if (pendingMoveOut) {
                         performMoveOutDelete();
                     }
@@ -232,6 +233,10 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
             drawerLayout.closeDrawer(GravityCompat.END);
             showScrapeSourceDialog();
         });
+        binding.drawerBackup.setOnClickListener(v -> {
+            drawerLayout.closeDrawer(GravityCompat.END);
+            showBackupSettingsDialog();
+        });
         binding.drawerLog.setOnClickListener(v -> {
             drawerLayout.closeDrawer(GravityCompat.END);
             showLogDialog();
@@ -270,6 +275,9 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
         binding.btnBatchMoveOut.setOnClickListener(v -> batchMoveOut());
         binding.btnBatchExport.setOnClickListener(v -> batchExport());
         binding.fabAdd.setOnClickListener(v -> showAddDialog());
+
+        // 启动时检查是否需要备份（按日期差判定）
+        BackupManager.checkAndBackup(this);
 
         // 首次启动弹窗
         checkFirstLaunch();
@@ -754,7 +762,7 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
 
     private void exportJsonToDownload() {
         try {
-            pendingExportJson = gson.toJson(originList);
+            pendingExportJson = BackupManager.getDataJson(this);
             Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.setType("application/json");
@@ -830,6 +838,9 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
         switch (currentSortField) {
             case RATING:
                 comparator = Comparator.comparingInt(CardItem::getRating);
+                break;
+            case JUMP_COUNT:
+                comparator = Comparator.comparingInt(CardItem::getJumpCount);
                 break;
             case TIME:
                 comparator = Comparator.comparingLong(CardItem::getCreateTime);
@@ -919,6 +930,24 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
         saveCacheData();
     }
 
+    @Override
+    public void onItemJump(int position) {
+        CardItem item = cardList.get(position);
+        String code = item.getCode();
+        if (code == null || code.trim().isEmpty()) return;
+
+        // 记录跳转次数
+        item.setJumpCount(item.getJumpCount() + 1);
+        LogUtil.i("跳转: " + code + " 次数=" + item.getJumpCount());
+        saveCacheData();
+
+        // 执行跳转
+        JumpSource jumpSource = JumpSource.getCurrent(this);
+        String url = jumpSource.buildUrl(CardItem.normalizeCode(code));
+        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+        startActivity(intent);
+    }
+
     // =========================
     // 从系统相册复制图片到内部存储
     // =========================
@@ -967,8 +996,8 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
     // 排序对话框
     // =========================
     private void showSortDialog() {
-        String[] fieldNames = {"星级", "添加时间", "番号首字母"};
-        SortField[] fields = {SortField.RATING, SortField.TIME, SortField.CODE};
+        String[] fieldNames = {"星级", "跳转次数", "添加时间", "番号首字母"};
+        SortField[] fields = {SortField.RATING, SortField.JUMP_COUNT, SortField.TIME, SortField.CODE};
 
         // 构建带方向指示的选项文字
         String[] items = new String[fieldNames.length];
@@ -998,6 +1027,84 @@ public class MainActivity extends AppCompatActivity implements CardAdapter.OnIte
                 .setNegativeButton("取消", null)
                 .create()
                 .show();
+    }
+
+    // =========================
+    // 定时备份设置对话框
+    // =========================
+    private void showBackupSettingsDialog() {
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_backup_settings, null);
+        TextView tvLastBackup = view.findViewById(R.id.tvLastBackupTime);
+        TextView tvBackupCount = view.findViewById(R.id.tvBackupCount);
+        EditText etInterval = view.findViewById(R.id.etBackupInterval);
+        Spinner spCount = view.findViewById(R.id.spBackupCount);
+        TextView tvBackupFiles = view.findViewById(R.id.tvBackupFiles);
+        TextView tvBackupPath = view.findViewById(R.id.tvBackupPath);
+        androidx.appcompat.widget.AppCompatButton btnBackupNow = view.findViewById(R.id.btnBackupNow);
+
+        // 自动备份目录（外部存储，可通过文件管理器访问）
+        tvBackupPath.setText("自动备份目录：" + BackupManager.getBackupDir(this).getAbsolutePath());
+
+        // 上次备份日期
+        tvLastBackup.setText("上次备份：" + BackupManager.formatLastBackupDate(this));
+
+        // 备份数量选择
+        int currentCount = BackupManager.getBackupCount(this);
+        String[] countOptions = {"1", "2", "3", "5", "10"};
+        ArrayAdapter<String> countAdapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_item, countOptions);
+        countAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spCount.setAdapter(countAdapter);
+        for (int i = 0; i < countOptions.length; i++) {
+            if (Integer.parseInt(countOptions[i]) == currentCount) {
+                spCount.setSelection(i);
+                break;
+            }
+        }
+
+        // 备份间隔
+        int intervalDays = BackupManager.getBackupIntervalDays(this);
+        etInterval.setText(String.valueOf(intervalDays));
+
+        // 现有备份列表
+        refreshBackupFileList(tvBackupFiles);
+
+        // 立即备份按钮 → 调用 SAF 导出（与"导出 JSON"相同流程）
+        btnBackupNow.setOnClickListener(bv -> {
+            exportJsonToDownload();
+        });
+
+        new AlertDialog.Builder(this)
+                .setTitle("定时备份设置")
+                .setView(view)
+                .setPositiveButton("保存", (d, i) -> {
+                    try {
+                        int count = Integer.parseInt(countOptions[spCount.getSelectedItemPosition()]);
+                        BackupManager.setBackupCount(this, count);
+                    } catch (Exception ignored) {}
+                    try {
+                        int days = Integer.parseInt(etInterval.getText().toString().trim());
+                        BackupManager.setBackupIntervalDays(this, days);
+                    } catch (Exception ignored) {}
+                    Toast.makeText(this, "备份设置已保存", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("取消", null)
+                .create()
+                .show();
+    }
+
+    private void refreshBackupFileList(TextView tvBackupFiles) {
+        List<File> files = BackupManager.getBackupFiles(this);
+        tvBackupFiles.setMovementMethod(new android.text.method.ScrollingMovementMethod());
+        if (files.isEmpty()) {
+            tvBackupFiles.setText("暂无备份文件");
+        } else {
+            StringBuilder sb = new StringBuilder();
+            for (File f : files) {
+                sb.append(BackupManager.parseTimestampFromName(f.getName())).append("\n");
+            }
+            tvBackupFiles.setText(sb.toString().trim());
+        }
     }
 
     private void showLogDialog() {

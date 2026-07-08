@@ -128,6 +128,15 @@
                     android:textColor="#666666"
                     android:background="@drawable/btn_jump_bg"/>
 
+                <TextView
+                    android:id="@+id/tvJumpCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textSize="10sp"
+                    android:textColor="#AAAAAA"
+                    android:layout_marginStart="4dp"
+                    android:visibility="gone"/>
+
                 <View
                     android:layout_width="0dp"
                     android:layout_height="1dp"

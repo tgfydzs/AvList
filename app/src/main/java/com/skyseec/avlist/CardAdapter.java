@@ -1,8 +1,6 @@
 package com.skyseec.avlist;
 
 import android.content.Context;
-import android.content.Intent;
-import android.net.Uri;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -41,6 +39,7 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
         void onItemClick(int position);
         void onItemScrape(int position);
         void onItemClear(int position);
+        void onItemJump(int position);
     }
 
     public CardAdapter(Context context, List<CardItem> list, List<CardItem> selectedItems) {
@@ -184,10 +183,12 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
             holder.btnJump.setAlpha(1.0f);
             holder.btnJump.setBackgroundResource(R.drawable.btn_jump_bg);
             holder.btnJump.setOnClickListener(v -> {
-                JumpSource jumpSource = JumpSource.getCurrent(context);
-                String url = jumpSource.buildUrl(CardItem.normalizeCode(jumpCode));
-                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                context.startActivity(intent);
+                if (listener != null) {
+                    int pos = holder.getAdapterPosition();
+                    if (pos != RecyclerView.NO_POSITION) {
+                        listener.onItemJump(pos);
+                    }
+                }
             });
         } else {
             holder.btnJump.setText("无跳转");
@@ -196,6 +197,15 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
             holder.btnJump.setBackground(null);
             holder.btnJump.setOnClickListener(null);
             holder.btnJump.setClickable(false);
+        }
+
+        // 跳转次数：只有跳转过才显示
+        int jumpCount = item.getJumpCount();
+        if (jumpCount > 0) {
+            holder.tvJumpCount.setText("×" + jumpCount);
+            holder.tvJumpCount.setVisibility(View.VISIBLE);
+        } else {
+            holder.tvJumpCount.setVisibility(View.GONE);
         }
 
         // =========================
@@ -265,7 +275,7 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
     public static class CardViewHolder extends RecyclerView.ViewHolder {
 
         ImageView ivImage;
-        TextView tvTitle, tvCode, tvCreateTime;
+        TextView tvTitle, tvCode, tvCreateTime, tvJumpCount;
         CheckBox cbSelect;
         AppCompatButton btnJump, btnScrape, btnClear;
         LinearLayout llRating;
@@ -282,6 +292,7 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
             btnScrape = itemView.findViewById(R.id.btnScrape);
             btnClear = itemView.findViewById(R.id.btnClear);
             btnJump = itemView.findViewById(R.id.btnJump);
+            tvJumpCount = itemView.findViewById(R.id.tvJumpCount);
             llRating = itemView.findViewById(R.id.llRating);
             starViews = new ImageView[]{
                     itemView.findViewById(R.id.ivStar1),

@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <EditText
+        android:id="@+id/etSourceName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="源名称（如 JavBus）"/>
+
+    <EditText
+        android:id="@+id/etSourceUrl"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="搜索基础地址（番号占位: {keyword}）"
+        android:layout_marginTop="12dp"/>
+
+    <EditText
+        android:id="@+id/etTitleXPath"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="标题 XPath（如 //h3/text()）"
+        android:layout_marginTop="12dp"/>
+
+    <EditText
+        android:id="@+id/etImageXPath"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="图片 XPath（如 //div[@class='cover']/img/@src）"
+        android:layout_marginTop="12dp"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="12dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="等待渲染（秒）"
+            android:textSize="14sp"
+            android:textColor="#333333"/>
+
+        <EditText
+            android:id="@+id/etWaitSeconds"
+            android:layout_width="60dp"
+            android:layout_height="wrap_content"
+            android:hint="3"
+            android:inputType="number"
+            android:textSize="14sp"
+            android:layout_marginStart="8dp"/>
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="CF预热"
+            android:textSize="14sp"
+            android:textColor="#333333"
+            android:layout_marginStart="16dp"/>
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/swNeedsPrewarm"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"/>
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="CF预热：先访问网站首页通过Cloudflare验证（Cookie自动保留），再搜索。有CF防火墙的网站建议开启，等待渲染建议设 6-10 秒。"
+        android:textSize="11sp"
+        android:textColor="#888888"
+        android:lineSpacingExtra="2dp"/>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="提示：XPath 指向的属性（如 @src、@title）或文本节点均可直接提取。图片若返回相对路径（以 / 开头），系统会自动用基础地址的域名补全。"
+        android:textSize="11sp"
+        android:textColor="#888888"
+        android:lineSpacingExtra="2dp"/>
+
+</LinearLayout>

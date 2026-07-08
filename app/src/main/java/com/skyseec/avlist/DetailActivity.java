@@ -34,7 +34,7 @@ import java.util.Locale;
 public class DetailActivity extends AppCompatActivity {
 
     private ImageView ivDetailImage;
-    private TextView tvDetailCode, tvDetailTitle, tvDetailTag, tvDetailTime;
+    private TextView tvDetailCode, tvDetailTitle, tvDetailTag, tvDetailTime, tvDetailJumpCount;
     private TextView tvDetailContent, tvDetailRemark;
     private AppCompatButton btnEditDetail, btnScrapeDetail, btnClearDetail;
     private LinearLayout llContentSection, llRemarkSection;
@@ -78,6 +78,7 @@ public class DetailActivity extends AppCompatActivity {
         tvDetailTitle = findViewById(R.id.tvDetailTitle);
         tvDetailTag = findViewById(R.id.tvDetailTag);
         tvDetailTime = findViewById(R.id.tvDetailTime);
+        tvDetailJumpCount = findViewById(R.id.tvDetailJumpCount);
         tvDetailContent = findViewById(R.id.tvDetailContent);
         tvDetailRemark = findViewById(R.id.tvDetailRemark);
         btnEditDetail = findViewById(R.id.btnEditDetail);
@@ -190,6 +191,10 @@ public class DetailActivity extends AppCompatActivity {
             Toast.makeText(this, "已清除", Toast.LENGTH_SHORT).show();
         });
 
+        // ========== 跳转次数 ==========
+        int jumpCount = item.getJumpCount();
+        tvDetailJumpCount.setText("跳转次数：" + jumpCount);
+
         // ========== 时间 ==========
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault());
         tvDetailTime.setText(sdf.format(new Date(item.getCreateTime())));
@@ -266,6 +271,7 @@ public class DetailActivity extends AppCompatActivity {
                 cached.setTag(item.getTag());
                 cached.setRemark(item.getRemark());
                 cached.setRating(item.getRating());
+                cached.setJumpCount(item.getJumpCount());
                 cached.setUserEdited(item.isUserEdited());
                 // 同步本地引用到最新缓存对象
                 item = cached;
