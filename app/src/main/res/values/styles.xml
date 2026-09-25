@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+      「筛选与排序」弹窗里的一颗过滤片。
+
+      直接用 M3 的 Filter 样式，**不改颜色** —— 它自带的状态色跟着主题走，
+      深色模式不用另配一套。只把尺寸压小、去掉选中时那颗对勾：
+      对勾一出现就会把后面的片子挤走，同一行里点一下整排都跟着动，很难受。
+      选中与否看底色（M3 的 colorSecondaryContainer）就够了。
+    -->
+    <style name="Widget.AvList.FilterChip" parent="Widget.Material3.Chip.Filter">
+        <item name="checkedIconVisible">false</item>
+        <item name="ensureMinTouchTargetSize">false</item>
+        <item name="chipMinHeight">34dp</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 软件设置页里一个分区的底：白底圆角，靠 12dp 的外边距和灰底分开 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#FFFFFF"/>
+    <corners android:radius="10dp"/>
+</shape>

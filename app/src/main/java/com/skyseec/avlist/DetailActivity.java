@@ -163,19 +163,26 @@ public class DetailActivity extends AppCompatActivity {
         // ========== 编辑按钮 ==========
         btnEditDetail.setOnClickListener(v -> showEditDialog());
 
-        // ========== 刮削按钮 ==========
+        // ========== 刮削按钮：点它 = 打开这张卡的刮削 + 加进当前队列 ==========
+        // 同样是恒定的动作文案，状态看「清除」显不显示
+        boolean scrapeOn = item.isScrapeEnabled();
+        btnScrapeDetail.setText("刮削");
+        btnScrapeDetail.setAlpha(1.0f);
+
         btnScrapeDetail.setOnClickListener(v -> {
             if (code != null && !code.trim().isEmpty()) {
+                item.setScrapeEnabled(true);
+                saveItemToCache();   // 顺带把 item 换成缓存里那份最新的
+                bindData();          // 刷新按钮文案
                 triggerScrape(code);
             } else {
                 Toast.makeText(this, "无番号，无法刮削", Toast.LENGTH_SHORT).show();
             }
         });
 
-        // ========== 清除按钮 ==========
-        boolean hasScrapedData = (item.getTitle() != null && !item.getTitle().trim().isEmpty())
-                || (item.getImageUrl() != null && !item.getImageUrl().trim().isEmpty());
-        btnClearDetail.setVisibility(hasScrapedData ? View.VISIBLE : View.GONE);
+        // ========== 清除按钮：跟着刮削状态走，和列表页一致 ==========
+        btnClearDetail.setVisibility(scrapeOn ? View.VISIBLE : View.GONE);
+        // 清除 = 关掉刮削状态 + 清掉抓来的标题和图片，和列表页那颗按钮一个语义
         btnClearDetail.setOnClickListener(v -> {
             try {
                 String p = item.resolveLocalImagePath(this);
@@ -185,10 +192,12 @@ public class DetailActivity extends AppCompatActivity {
             item.setTitle("");
             item.setImageUrl("");
             item.setLocalImagePath(null);
+            item.clearImageSize();      // 图没了，比例记录作废
             item.setUserEdited(false);  // 清除同时重置编辑标记
+            item.setScrapeEnabled(false);
             saveItemToCache();
             bindData();
-            Toast.makeText(this, "已清除", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "已清除，刮削已关闭", Toast.LENGTH_SHORT).show();
         });
 
         // ========== 跳转次数 ==========
@@ -273,6 +282,15 @@ public class DetailActivity extends AppCompatActivity {
                 cached.setRating(item.getRating());
                 cached.setJumpCount(item.getJumpCount());
                 cached.setUserEdited(item.isUserEdited());
+                // 详情页的「刮削」/「清除」会改这个，不写回等于白点
+                cached.setScrapeEnabled(item.isScrapeEnabled());
+                // 尺寸成对同步：clearImageSize() 把 item 清成 0 时，缓存里那份也得清，
+                // 否则下一张图会沿用上一张的比例。setImageSize 只认正数，所以分开写。
+                if (item.getImgWidth() > 0 && item.getImgHeight() > 0) {
+                    cached.setImageSize(item.getImgWidth(), item.getImgHeight());
+                } else {
+                    cached.clearImageSize();
+                }
                 // 同步本地引用到最新缓存对象
                 item = cached;
                 break;
@@ -354,7 +372,8 @@ public class DetailActivity extends AppCompatActivity {
 
                     // 复制选中的本地图片
                     if (pendingImagePickUri != null) {
-                        copyImageToLocal(pendingImagePickUri, item.getId());
+                        File pickedFile = copyImageToLocal(pendingImagePickUri, item.getId());
+                        ImageSizeUtil.applyToCard(item, pickedFile);
                         pendingImagePickUri = null;
                     }
                     editDialogView = null;
@@ -371,12 +390,13 @@ public class DetailActivity extends AppCompatActivity {
                 .show();
     }
 
-    private void copyImageToLocal(Uri sourceUri, String cardId) {
+    /** @return 保存后的文件；失败返回 null */
+    private File copyImageToLocal(Uri sourceUri, String cardId) {
         try {
             InputStream is = getContentResolver().openInputStream(sourceUri);
             if (is == null) {
                 LogUtil.w("无法打开图片: " + sourceUri);
-                return;
+                return null;
             }
             File dir = new File(getFilesDir(), "images");
             if (!dir.exists()) dir.mkdirs();
@@ -391,8 +411,10 @@ public class DetailActivity extends AppCompatActivity {
             fos.close();
             is.close();
             LogUtil.i("本地图片已保存: " + outFile.getAbsolutePath());
+            return outFile;
         } catch (Exception e) {
             LogUtil.e("复制图片失败", e);
+            return null;
         }
     }
 

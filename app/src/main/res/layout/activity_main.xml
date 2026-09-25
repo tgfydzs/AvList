@@ -121,28 +121,107 @@
             android:layout_gravity="bottom"
             android:background="@android:color/white"
             android:visibility="gone"
-            android:orientation="horizontal"
-            android:gravity="center">
+            android:orientation="horizontal">
 
-            <androidx.appcompat.widget.AppCompatButton
-                android:id="@+id/btnBatchDelete"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="删除"
-                android:layout_marginEnd="16dp"/>
+            <!-- 6 个按钮在窄屏放不下，横滑保证任何一个都够得着；
+                 fillViewport 让内容不足一屏时仍然居中，观感不变 -->
+            <HorizontalScrollView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:fillViewport="true"
+                android:scrollbars="none">
 
-            <androidx.appcompat.widget.AppCompatButton
-                android:id="@+id/btnBatchMoveOut"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="移出"
-                android:layout_marginEnd="16dp"/>
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:paddingHorizontal="8dp">
 
-            <androidx.appcompat.widget.AppCompatButton
-                android:id="@+id/btnBatchExport"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="导出"/>
+                    <androidx.appcompat.widget.AppCompatButton
+                        android:id="@+id/btnBatchSelectAll"
+                        android:layout_width="wrap_content"
+                        android:layout_height="40dp"
+                        android:text="全选"
+                        android:textSize="13sp"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:layout_marginEnd="8dp"/>
+
+                    <androidx.appcompat.widget.AppCompatButton
+                        android:id="@+id/btnBatchScrape"
+                        android:layout_width="wrap_content"
+                        android:layout_height="40dp"
+                        android:text="刮削"
+                        android:textSize="13sp"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:layout_marginEnd="8dp"/>
+
+                    <androidx.appcompat.widget.AppCompatButton
+                        android:id="@+id/btnBatchClear"
+                        android:layout_width="wrap_content"
+                        android:layout_height="40dp"
+                        android:text="清除"
+                        android:textSize="13sp"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:layout_marginEnd="8dp"/>
+
+                    <androidx.appcompat.widget.AppCompatButton
+                        android:id="@+id/btnBatchDelete"
+                        android:layout_width="wrap_content"
+                        android:layout_height="40dp"
+                        android:text="删除"
+                        android:textSize="13sp"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:layout_marginEnd="8dp"/>
+
+                    <androidx.appcompat.widget.AppCompatButton
+                        android:id="@+id/btnBatchMoveOut"
+                        android:layout_width="wrap_content"
+                        android:layout_height="40dp"
+                        android:text="移出"
+                        android:textSize="13sp"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:layout_marginEnd="8dp"/>
+
+                    <androidx.appcompat.widget.AppCompatButton
+                        android:id="@+id/btnBatchExport"
+                        android:layout_width="wrap_content"
+                        android:layout_height="40dp"
+                        android:text="导出"
+                        android:textSize="13sp"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"/>
+                </LinearLayout>
+            </HorizontalScrollView>
         </LinearLayout>
 
         <com.google.android.material.floatingactionbutton.FloatingActionButton
@@ -154,6 +233,20 @@
             android:src="@android:drawable/ic_menu_add"
             app:backgroundTint="#664FA3"
             app:tint="@android:color/white" />
+
+        <!--
+          「筛选与排序」面板。做成常驻视图而不是 Dialog，是为了让它和右菜单一样
+          "点下去那一帧就开始动" —— 详见 MainActivity.setupFilterSheet 上面的注释。
+
+          位置有讲究：必须是 CoordinatorLayout 的**最后一个**孩子，而且 view_filter_sheet
+          里给了 16dp 的 elevation。这一层是按 Z 序画的，两个条件少一个，
+          面板就会被 FAB 或顶栏盖住一角。
+        -->
+        <include
+            android:id="@+id/filterSheetOverlay"
+            layout="@layout/view_filter_sheet"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
 
     </androidx.coordinatorlayout.widget.CoordinatorLayout>
 
@@ -284,19 +377,6 @@
             android:paddingEnd="20dp"
             android:background="?attr/selectableItemBackground"/>
 
-        <!-- 使用说明 -->
-        <TextView
-            android:id="@+id/drawer_guide"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:text="使用说明"
-            android:textSize="15sp"
-            android:textColor="#333333"
-            android:gravity="center_vertical"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
-            android:background="?attr/selectableItemBackground"/>
-
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
@@ -310,6 +390,32 @@
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:text="运行日志"
+            android:textSize="15sp"
+            android:textColor="#333333"
+            android:gravity="center_vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:background="?attr/selectableItemBackground"/>
+
+        <!-- 软件设置（和运行日志一组） -->
+        <TextView
+            android:id="@+id/drawer_settings"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="软件设置"
+            android:textSize="15sp"
+            android:textColor="#333333"
+            android:gravity="center_vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:background="?attr/selectableItemBackground"/>
+
+        <!-- 使用说明：软件设置下面。首次启动自动弹一次，弹窗不可编辑，这里是手动入口 -->
+        <TextView
+            android:id="@+id/drawer_guide"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="使用说明"
             android:textSize="15sp"
             android:textColor="#333333"
             android:gravity="center_vertical"

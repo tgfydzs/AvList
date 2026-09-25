@@ -1,15 +1,42 @@
-*.iml
+# =========================
+# Gradle / 构建产物
+# =========================
 .gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
+# 注意 /build 前面的斜杠是有意的：它只锚定仓库根目录，app/build 归 app/.gitignore 管。
+# 去掉斜杠会变成"匹配任意层级的 build 目录"，功能上也没错，但那是另一回事了。
 /build
 /captures
 .externalNativeBuild
 .cxx
+
+# =========================
+# 本机配置 —— 每台机器都不一样，进了版本库只会在换机时打架
+# =========================
+# sdk.dir=<你的 AndroidSDK 路径>，Android Studio 自动生成
 local.properties
+
+# 整个 IDE 目录。这里是单人项目，没有队友要共享代码风格和运行配置；
+# 而 .idea 里最要命的几个恰恰都是机器相关的：gradle.xml 存本机 Gradle JDK、
+# misc.xml 存项目 SDK、deploymentTargetSelector.xml / deviceManager.xml 存本机设备。
+# 以后真要共享 codeStyles / inspectionProfiles，再单独把那几个放行。
+.idea/
+
+# =========================
+# 签名密钥 —— 一旦提交就等于泄露，而且删掉之后还留在 git 历史里
+# （现在还没有签名文件。这条是零成本的提前保险，别等出事再加。）
+# =========================
+*.jks
+*.keystore
+keystore.properties
+
+# =========================
+# Claude Code
+# =========================
+# settings.json 是项目共享的；带 .local 后缀的那份是本机设置，不该进版本库
+.claude/settings.local.json
+
+# =========================
+# 杂项
+# =========================
+*.iml
+.DS_Store

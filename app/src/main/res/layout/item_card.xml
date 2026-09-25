@@ -20,11 +20,10 @@
             android:layout_height="wrap_content"
             android:visibility="gone"/>
 
-        <ImageView
+        <com.skyseec.avlist.RatioImageView
             android:id="@+id/ivImage"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:adjustViewBounds="true"
             android:scaleType="fitCenter"
             android:visibility="gone"/>
 

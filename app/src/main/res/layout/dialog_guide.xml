@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  使用说明弹窗 —— 只读，内容写死在 MainActivity.GUIDE_TEXT 里，没有编辑入口。
+-->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -20,15 +23,5 @@
             android:lineSpacingExtra="4dp"/>
 
     </ScrollView>
-
-    <EditText
-        android:id="@+id/etGuideContent"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textSize="14sp"
-        android:minHeight="200dp"
-        android:gravity="top"
-        android:hint="填写使用说明内容..."
-        android:visibility="gone"/>
 
 </LinearLayout>

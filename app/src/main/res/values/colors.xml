@@ -2,4 +2,7 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- 有筛选生效时，工具栏那颗「筛选与排序」图标的颜色（顶栏是 colorPrimary，琥珀色在上面够显眼） -->
+    <color name="filter_icon_active">#FFFFD54F</color>
 </resources>

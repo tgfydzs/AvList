@@ -25,6 +25,12 @@ import java.util.Locale;
 
 public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder> {
 
+    /**
+     * 图片宽高未知时的兜底比例（高/宽）。只影响本地无图、尺寸也没记录下来的卡片，
+     * 刮削下载完成后会记上真实尺寸，不再走这里。
+     */
+    private static final float FALLBACK_RATIO = 0.75f;
+
     private final Context context;
     private final List<CardItem> list;
     private final List<CardItem> selectedItems;
@@ -121,10 +127,15 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
         File localFile = new File(localPath);
         boolean hasImage = false;
 
+        // 行高先由已记录的真实比例定下来，图片什么时候加载完都不再影响布局
+        float imageRatio = item.getImageRatio();
+        holder.ivImage.setRatio(imageRatio > 0f ? imageRatio : FALLBACK_RATIO);
+
         if (localFile.exists()) {
             Glide.with(context)
                     .load(localFile)
                     .dontTransform()
+                    .dontAnimate()
                     .into(holder.ivImage);
             hasImage = true;
         } else {
@@ -148,6 +159,7 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
                 Glide.with(context)
                         .load(glideUrl)
                         .dontTransform()
+                        .dontAnimate()
                         .into(holder.ivImage);
                 hasImage = true;
             }
@@ -209,8 +221,16 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
         }
 
         // =========================
-        // 刮削按钮 — 纯动作，点击即刮削
+        // 刮削按钮 —— 点它 = 打开这张卡的刮削 + 把这张卡加进当前队列
+        //
+        // 文案恒为"刮削"，不随状态变 —— 它是一颗动作按钮，不是状态显示。
+        // 状态由「清除」的显隐表达：看得见清除 = 刮削开着，看不见 = 关着。
         // =========================
+        boolean scrapeOn = item.isScrapeEnabled();
+        holder.btnScrape.setText("刮削");
+        holder.btnScrape.setTextColor(0xFF888888);
+        holder.btnScrape.setAlpha(1.0f);
+
         holder.btnScrape.setOnClickListener(v -> {
             if (listener != null) {
                 int pos = holder.getAdapterPosition();
@@ -219,11 +239,13 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
                 }
             }
         });
+        // 长按不在这里处理 —— 冒泡给 itemView，走原来的"进入多选"
+        holder.btnScrape.setOnLongClickListener(null);
 
-        // 清除按钮：有标题或图片时显示
-        boolean hasScrapedData = (item.getTitle() != null && !item.getTitle().trim().isEmpty())
-                || (item.getImageUrl() != null && !item.getImageUrl().trim().isEmpty());
-        holder.btnClear.setVisibility(hasScrapedData ? View.VISIBLE : View.GONE);
+        // 清除按钮的显隐 = 这张卡的刮削状态（也就是卡片上唯一的状态指示）。
+        // 刮削开着就显示（哪怕还没抓到东西也点得到，否则那张卡就关不掉了）；
+        // 关着就藏起来，只剩一颗「刮削」。
+        holder.btnClear.setVisibility(scrapeOn ? View.VISIBLE : View.GONE);
         holder.btnClear.setOnClickListener(v -> {
             if (listener != null) {
                 int pos = holder.getAdapterPosition();
@@ -274,7 +296,7 @@ public class CardAdapter extends RecyclerView.Adapter<CardAdapter.CardViewHolder
 
     public static class CardViewHolder extends RecyclerView.ViewHolder {
 
-        ImageView ivImage;
+        RatioImageView ivImage;
         TextView tvTitle, tvCode, tvCreateTime, tvJumpCount;
         CheckBox cbSelect;
         AppCompatButton btnJump, btnScrape, btnClear;

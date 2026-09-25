@@ -45,6 +45,12 @@ Simple vector drawable (cloud-download icon, white on transparent) for notificat
 
 ---
 
+> ⚠️ **已过时** —— 这是施工前的计划，保留作历史记录；实现过程中有多处偏离。
+> 几处对不上的：`JavResolver` 的超时不是固定的 90 秒（后来是 150 秒，现在由
+> 「软件设置」的**队列单卡片搜索上限**提供）；队列 prefs 实际叫 `scrape_queue_prefs`
+> 而不是 `scrape_queue`；广播常量实际叫 `BROADCAST_PROGRESS` 而不是
+> `ACTION_SCRAPE_PROGRESS`。当前行为一律以 [CLAUDE.md](../../CLAUDE.md) 为准。
+
 ## Modified Files
 
 ### 4. `JavResolver.java`

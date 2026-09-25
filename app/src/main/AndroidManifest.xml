@@ -43,6 +43,11 @@
             android:name=".DetailActivity"
             android:exported="false"/>
 
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"/>
+
         <service
             android:name=".AddCardTileService"
             android:icon="@drawable/ic_tile_add"

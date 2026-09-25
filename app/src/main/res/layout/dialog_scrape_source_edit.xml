@@ -33,6 +33,15 @@
         android:hint="图片 XPath（如 //div[@class='cover']/img/@src）"
         android:layout_marginTop="12dp"/>
 
+    <EditText
+        android:id="@+id/etSourceUserAgent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="User-Agent（留空 = 默认桌面 Chrome）"
+        android:inputType="textNoSuggestions"
+        android:textSize="14sp"
+        android:layout_marginTop="12dp"/>
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

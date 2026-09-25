@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#F5F5F5">
+
+    <!-- 顶栏（主题是 NoActionBar，自带一个） -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="4dp"
+        android:background="?attr/colorPrimary"
+        android:elevation="4dp">
+
+        <androidx.appcompat.widget.AppCompatImageButton
+            android:id="@+id/btnBack"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_back"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="返回"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="软件设置"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold"/>
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <!-- ============================================================
+                 分区：刮削
+                 每行 = 标题 + 一句摘要 + 右侧控件。**长按整行**弹窗看详细说明，
+                 说明文字不放在布局里 —— 它们写在 SettingsActivity 的 ROW_HELP 里。
+                 ============================================================ -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_settings_section"
+                android:paddingTop="10dp"
+                android:paddingBottom="10dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingHorizontal="16dp"
+                    android:paddingBottom="4dp"
+                    android:text="刮削"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:textColor="?attr/colorPrimary"/>
+
+                <!-- ===== 行 1：队列单卡片搜索上限 ===== -->
+                <LinearLayout
+                    android:id="@+id/rowTimeout"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:minHeight="56dp"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:paddingVertical="8dp"
+                    android:background="?attr/selectableItemBackground">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="队列单卡片搜索时限"
+                            android:textSize="16sp"
+                            android:textColor="#333333"/>
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="一次尝试最多占用队列多久"
+                            android:textSize="12sp"
+                            android:textColor="#999999"/>
+                    </LinearLayout>
+
+                    <EditText
+                        android:id="@+id/etQueueTimeout"
+                        android:layout_width="76dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:background="#F2F2F2"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="8dp"
+                        android:gravity="end"
+                        android:textSize="15sp"
+                        android:inputType="number"
+                        android:maxLines="1"
+                        android:hint="20"/>
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginHorizontal="16dp"
+                    android:background="#EEEEEE"/>
+
+                <!-- ===== 行 2：队列单卡片搜索步进 ===== -->
+                <LinearLayout
+                    android:id="@+id/rowStep"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:minHeight="56dp"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:paddingVertical="8dp"
+                    android:background="?attr/selectableItemBackground">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="队列单卡片搜索步进"
+                            android:textSize="16sp"
+                            android:textColor="#333333"/>
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="每多一轮，等待窗口乘多少倍"
+                            android:textSize="12sp"
+                            android:textColor="#999999"/>
+                    </LinearLayout>
+
+                    <EditText
+                        android:id="@+id/etQueueStep"
+                        android:layout_width="76dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:background="#F2F2F2"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="8dp"
+                        android:gravity="end"
+                        android:textSize="15sp"
+                        android:inputType="numberDecimal"
+                        android:maxLines="1"
+                        android:hint="1.0"/>
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginHorizontal="16dp"
+                    android:background="#EEEEEE"/>
+
+                <!-- ===== 行 3：刮削失败后关闭刮削 ===== -->
+                <LinearLayout
+                    android:id="@+id/rowDisableOnFail"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:minHeight="56dp"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:paddingVertical="8dp"
+                    android:background="?attr/selectableItemBackground">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="刮削失败后关闭刮削"
+                            android:textSize="16sp"
+                            android:textColor="#333333"/>
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="连着 3 次搜不到就关掉这张卡的刮削"
+                            android:textSize="12sp"
+                            android:textColor="#999999"/>
+                    </LinearLayout>
+
+                    <androidx.appcompat.widget.SwitchCompat
+                        android:id="@+id/swDisableOnFail"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"/>
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- 以后加新分区就照上面这块复制一份，换个标题和内容 -->
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- 底部按钮：作用于整页，不跟着分区走 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:background="#FFFFFF"
+        android:elevation="4dp">
+
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/btnSave"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_weight="1"
+            android:text="保存"
+            android:textSize="14sp"/>
+
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/btnReset"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:text="恢复默认"
+            android:textSize="14sp"/>
+    </LinearLayout>
+
+</LinearLayout>

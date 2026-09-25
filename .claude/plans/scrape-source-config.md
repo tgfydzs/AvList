@@ -82,6 +82,18 @@ JavResolver(X5WebView webView, ScrapeSource source, ResolveCallback callback)
 
 ## 调用点适配
 
+> ⚠️ **本节已过时**（其余部分仍有效）。现在 **Activity 完全不碰 `JavResolver`** —— 刮削统一
+> 走 `ScrapeService.enqueue()` / `enqueueAll()`，服务内部才 new `JavResolver`。详见 CLAUDE.md。
+> 原来的四处，现在的实际行为：
+> 1. `showAddDialog()` — 开关打开时入队（仍然是"添加时自动刮削"）
+> 2. ~~`importCodeListFromText()` — 导入番号列表后逐条刮削~~
+>    → 现在：导入一律 `scrapeEnabled=false` 且**不入队**，要刮得在多选里显式点「刮削」
+> 3. ~~`onScrapeToggle()`~~ → 该方法已不存在。现在是 `onItemScrape()`（点「刮削」= 开状态+入队）
+>    和 `onItemClear()`（点「清除」= 关状态+清图），另有对应的 `batchScrape()` / `batchClear()`
+> 4. `triggerScrape()` — 详情页触发刮削（行为同 3）
+
+下面这段是当时的写法，保留作历史记录：
+
 MainActivity 中有 3 处创建 JavResolver:
 1. `showAddDialog()` — 添加卡片时自动刮削
 2. `importCodeListFromText()` — 导入番号列表后逐条刮削

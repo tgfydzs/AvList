@@ -3,7 +3,9 @@ package com.skyseec.avlist;
 import android.content.Context;
 import android.util.AttributeSet;
 import android.view.View;
+import android.webkit.ConsoleMessage;
 import android.webkit.CookieManager;
+import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 
@@ -35,8 +37,8 @@ public class X5WebView extends WebView {
         settings.setGeolocationEnabled(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
-        String ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-        settings.setUserAgentString(ua);
+        defaultUa = buildDefaultUa();
+        settings.setUserAgentString(defaultUa);
 
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
@@ -45,111 +47,97 @@ public class X5WebView extends WebView {
 
         setLayerType(View.LAYER_TYPE_HARDWARE, null);
 
+        // 渲染进程在应用不可见时默认会被"放弃"（waivedWhenNotVisible=true），
+        // 系统可以随时回收它 —— 一回收，所有 evaluateJavascript 回调就永远不来了。
+        // 刮削要在后台跑，所以这里不让它被放弃。
+        setRendererPriorityPolicy(RENDERER_PRIORITY_IMPORTANT, false);
+
+        // CF 的挑战脚本出错只会出现在这里 —— 页面上、网络里都看不出来。
+        // 之前排查 CF 全程没有这份输出，等于闭着眼调。
+        setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(ConsoleMessage cm) {
+                String msg = cm.message();
+                if (msg != null && msg.length() > 300) msg = msg.substring(0, 300) + "...";
+                LogUtil.w("【页面控制台】" + cm.messageLevel() + " " + msg
+                        + " @" + cm.sourceId() + ":" + cm.lineNumber());
+                return true;
+            }
+        });
+
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
             WebView.setWebContentsDebuggingEnabled(true);
         }
     }
 
-    public void injectStealthScript() {
-        String js =
-                "(function(){" +
-                        "Object.defineProperty(navigator,'webdriver',{get:()=>false});" +
-                        "delete Object.getPrototypeOf(navigator).webdriver;" +
-                        "Object.defineProperty(navigator,'plugins',{" +
-                        "  get:()=>[1,2,3,4,5]," +
-                        "  configurable:true" +
-                        "});" +
-                        "Object.defineProperty(navigator,'languages',{get:()=>['zh-CN','zh','en-US','en']});" +
-                        "Object.defineProperty(navigator,'language',{get:()=>'zh-CN'});" +
-                        "Object.defineProperty(navigator,'platform',{get:()=>'Win32'});" +
-                        "Object.defineProperty(navigator,'vendor',{get:()=>'Google Inc.'});" +
-                        "Object.defineProperty(navigator,'vendorSub',{get:()=>''});" +
-                        "Object.defineProperty(navigator,'hardwareConcurrency',{get:()=>8});" +
-                        "Object.defineProperty(navigator,'deviceMemory',{get:()=>8});" +
-                        "Object.defineProperty(navigator,'maxTouchPoints',{get:()=>0});" +
-                        "window.chrome={runtime:{},loadTimes:function(){},csi:function(){},app:{}};" +
-                        "if(navigator.permissions){" +
-                        "  var _query=navigator.permissions.query;" +
-                        "  navigator.permissions.query=function(p){" +
-                        "    return Promise.resolve({state:'prompt',onchange:null});" +
-                        "  };" +
-                        "}" +
-                        "Object.defineProperty(navigator,'mediaDevices',{get:()=>({enumerateDevices:()=>Promise.resolve([])})});" +
-                        "Object.defineProperty(screen,'colorDepth',{get:()=>24});" +
-                        "Object.defineProperty(screen,'pixelDepth',{get:()=>24});" +
-                        "Object.defineProperty(window,'outerWidth',{get:()=>1920});" +
-                        "Object.defineProperty(window,'outerHeight',{get:()=>1080});" +
-                        "if(navigator.connection){" +
-                        "  Object.defineProperty(navigator.connection,'rtt',{get:()=>50});" +
-                        "}" +
-                        "delete window.callPhantom;" +
-                        "delete window._phantom;" +
-                        "delete window.__nightmare;" +
-                        "delete window.emit;" +
-                        "delete window.spawn;" +
-                        "})();";
-        evaluateJavascript(js, null);
+    /** 取不到系统默认 UA 时的兜底，形状是标准 Android Chrome */
+    private static final String FALLBACK_UA =
+            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) "
+                    + "Chrome/131.0.0.0 Mobile Safari/537.36";
+
+    /** 本设备的默认 UA，initConfig 里算一次 */
+    private String defaultUa;
+
+    /**
+     * 默认 UA —— **设备真实 UA，不再伪装 Windows 桌面**。
+     *
+     * 改的原因（有实测数据，不是推理）：指纹打出来是这个样子 ——
+     *   ua              = Windows NT 10.0 … Chrome/131     ← 我们声称的
+     *   uaDataPlatform  = Android                          ← Chromium 按真实平台报的
+     *   glRenderer      = 手机 GPU（模拟器上直接写着 "Emulator"）
+     * 后两项是引擎按真实平台报的，改不掉。一个客户端在三处互相打架，
+     * 比"它就是 Android"本身可疑得多。真机 Chrome 无痕在同一个 IP 上能顺利打开
+     * missav.ws，差别就在它没撒谎。
+     *
+     * 取系统默认 UA，再抹掉 WebView 的两处暴露点：
+     *   "; wv)"        —— WebView 独有标记
+     *   "Version/4.0 " —— Chrome for Android 没有这一段
+     * 抹完就是标准 Android Chrome 的 UA 形状。
+     *
+     * ⚠️ 这个 UA 和 {@link PageScripts#STEALTH_JS} 是一套的：既然 UA 报 Android，
+     * 就不能再把 platform 补成 Win32、maxTouchPoints 补成 0 —— 那是新的矛盾。
+     *
+     * 个别站点如果对移动端返回不同 HTML 导致 XPath 失配，在「刮削源管理」里
+     * 给该源单独填 UA 即可（留空 = 用这个）。
+     */
+    private String buildDefaultUa() {
+        try {
+            String ua = WebSettings.getDefaultUserAgent(getContext());
+            if (ua != null && !ua.trim().isEmpty()) {
+                return ua.replace("; wv)", ")").replace("Version/4.0 ", "").trim();
+            }
+        } catch (Exception e) {
+            LogUtil.w("取系统默认 UA 失败，用兜底: " + e);
+        }
+        return FALLBACK_UA;
     }
 
     /**
-     * 注入DOM就绪轮询。
-     * 关键：这里的XPath可能指向元素节点（如 //div/a）或属性节点（如 //img/@data-src）。
-     * 轮询检查时统一处理两种节点类型。
+     * 应用 UA。传空则回到设备默认。
+     * 这是给个别站点留的兜底 —— 万一默认 UA 拿到不同 HTML 导致 XPath 失配，
+     * 可以在「刮削源管理」里给该源单独填一个（比如填回桌面版 UA）。
      */
-    public void injectReadyCheck(String titleXPath, String imageXPath, int maxSeconds) {
-        String pollingJs =
-                "(function(){" +
-                        "window.__scrapeReady=false;" +
-                        "window.__scrapeCheckCount=0;" +
-                        "window.__scrapeMaxCheck=" + (maxSeconds * 10) + ";" +
-                        "window.__scrapeDiag={tnFound:0,imFound:0,textSample:'',srcSample:'',nodeType:''};" +
-                        "window.__scrapeCheckInterval=setInterval(function(){" +
-                        "  window.__scrapeCheckCount++;" +
-                        "  var textOk=false,imgOk=false;" +
-                        // 标题：取第一个有实质文本的匹配
-                        "  try{" +
-                        "    var tnSnapshot=document.evaluate('" + escapeJsString(titleXPath) + "',document,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null);" +
-                        "    for(var ti=0;ti<tnSnapshot.snapshotLength;ti++){" +
-                        "      var tn=tnSnapshot.snapshotItem(ti);" +
-                        "      var tc=(tn.textContent||tn.nodeValue||'').trim();" +
-                        "      if(tc){textOk=true;window.__scrapeDiag.tnFound=1;window.__scrapeDiag.textSample=tc.substring(0,80);break;}" +
-                        "    }" +
-                        "  }catch(e){}" +
-                        // 图片：统一处理元素节点和属性节点
-                        "  try{" +
-                        "    var imSnapshot=document.evaluate('" + escapeJsString(imageXPath) + "',document,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null);" +
-                        "    for(var ii=0;ii<imSnapshot.snapshotLength;ii++){" +
-                        "      var im=imSnapshot.snapshotItem(ii);" +
-                        "      var isrc='';" +
-                        "      if(im.nodeType===2){" + // ATTRIBUTE_NODE
-                        "        isrc=im.nodeValue||'';" +
-                        "        window.__scrapeDiag.nodeType='attr';" +
-                        "      }else{" + // ELEMENT_NODE
-                        "        isrc=im.getAttribute('data-src')||im.getAttribute('data-original')||im.getAttribute('data-lazy')||im.src||'';" +
-                        "        window.__scrapeDiag.nodeType='elem';" +
-                        "      }" +
-                        "      if(isrc&&!isrc.startsWith('data:')&&!isrc.startsWith('blob:')){" +
-                        "        imgOk=true;window.__scrapeDiag.imFound=1;window.__scrapeDiag.srcSample=isrc.substring(0,100);break;" +
-                        "      }" +
-                        "    }" +
-                        "  }catch(e){}" +
-                        "  if(textOk||imgOk||window.__scrapeCheckCount>=window.__scrapeMaxCheck){" +
-                        "    clearInterval(window.__scrapeCheckInterval);" +
-                        "    window.__scrapeReady=true;" +
-                        "  }" +
-                        "},100);" +
-                        "})();";
-        evaluateJavascript(pollingJs, null);
+    public void applyUserAgent(String custom) {
+        String ua = (custom == null || custom.trim().isEmpty()) ? defaultUa : custom.trim();
+        getSettings().setUserAgentString(ua);
     }
 
-    public void stopReadyCheck() {
-        evaluateJavascript(
-                "if(window.__scrapeCheckInterval){clearInterval(window.__scrapeCheckInterval);window.__scrapeReady=true;}",
-                null);
+    /**
+     * 注入脚本，只清理自动化痕迹，不做任何指纹伪装。
+     * 由 WebScrapeEngine 在 loadUrl 前和每个 onPageStarted 各调一次。
+     */
+    public void injectStealthScript() {
+        evaluateJavascript(PageScripts.STEALTH_JS, null);
     }
 
-    private static String escapeJsString(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("'", "\\'");
+    /**
+     * 修补退化的窗口尺寸，预热页也要调。
+     *
+     * 服务里的 WebView 从来没挂到任何窗口上，window.outerWidth/outerHeight 报 0x0
+     * —— 真实浏览器不会这样，是个很干净、很好用的破绽。挑战是在预热页上跑的，
+     * 所以那个页面同样需要修。
+     */
+    public void patchWindowSize() {
+        evaluateJavascript(PageScripts.windowPatchJs(), null);
     }
 }

@@ -26,6 +26,7 @@ public class ScrapeSource implements Serializable {
     private boolean isDefault;
     private int waitSeconds = 3; // 页面加载后等待DOM渲染的秒数（默认3）
     private boolean needsPrewarm = false; // 是否需要先访问首页过CF验证
+    private String userAgent = ""; // 留空=用系统默认（真机 Chrome for Android）UA
 
     public ScrapeSource() {
         this.id = UUID.randomUUID().toString();
@@ -107,6 +108,18 @@ public class ScrapeSource implements Serializable {
 
     public void setNeedsPrewarm(boolean needsPrewarm) {
         this.needsPrewarm = needsPrewarm;
+    }
+
+    /**
+     * 该源专用的 User-Agent。留空表示用系统默认（与设备一致的真机 UA）。
+     * 个别站点对移动端返回的 HTML 不同导致 XPath 失配时，可以在这里填回桌面 UA。
+     */
+    public String getUserAgent() {
+        return userAgent == null ? "" : userAgent;
+    }
+
+    public void setUserAgent(String userAgent) {
+        this.userAgent = userAgent == null ? "" : userAgent;
     }
 
     /**

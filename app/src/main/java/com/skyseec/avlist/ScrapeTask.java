@@ -25,6 +25,12 @@ public class ScrapeTask implements Serializable {
     private String imgUrl;        // 刮削结果图片URL
     private String errorMessage;  // 失败原因
     private long createdAt;
+    /**
+     * 这个任务已经被重新执行过几次。两种原因共用这一个计数：
+     * ① 没搜到结果，被退回队列尾部轮转；② 浏览器内核崩溃，重建后重排。
+     * 到了上限（{@code ScrapeService.MAX_TASK_ATTEMPTS}）就不再回队，判 FAILED。
+     */
+    private int attempts = 0;
 
     public ScrapeTask() {
         this.id = UUID.randomUUID().toString();
@@ -80,6 +86,9 @@ public class ScrapeTask implements Serializable {
 
     public long getCreatedAt() { return createdAt; }
     public void setCreatedAt(long createdAt) { this.createdAt = createdAt; }
+
+    public int getAttempts() { return attempts; }
+    public void setAttempts(int attempts) { this.attempts = attempts; }
 
     /**
      * 是否已结束（成功或失败）

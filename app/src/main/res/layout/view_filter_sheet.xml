@@ -1,0 +1,368 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  「筛选与排序」面板。
+
+  每颗片子用 android:tag 直接写它对应的枚举名，Java 侧 valueOf 就能认回来，
+  文案只存在这一份 XML 里，不用在代码里再维护一张"第几项 = 什么"的映射表。
+
+  这块**不是弹窗**，是 activity_main 里 <include> 进来的常驻覆盖层 —— 换成 Dialog
+  每次打开都要重新 inflate、开一次窗口、再布局两遍，那一段就是手感上的延迟，
+  详见 MainActivity.setupFilterSheet 上面那段注释。
+
+  所以下面两个属性都不能删：
+   · visibility="invisible" —— 只挡绘制、不挡测量。面板因此随时有一个量准的高度，
+     openFilterSheet 才能拿它当滑入起点，而不用等一次布局。
+   · elevation="16dp" —— CoordinatorLayout 是按 Z 序画的，不给够高度面板会钻到
+     FAB（6dp）和顶栏（4dp）底下。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:visibility="invisible"
+    android:elevation="16dp">
+
+    <!--
+      遮罩是自己画的。当初的理由是窗口的 dim 在出场时**立刻**消失、不跟着动画走；
+      现在面板已经不在窗口里了，这条更成立 —— 遮罩和面板是同一个父容器下的兄弟，
+      两段 animate 用同一条曲线、同一个时长，天然同步。
+    -->
+    <View
+        android:id="@+id/filterScrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000"
+        android:alpha="0"/>
+
+    <!--
+      clickable 是必须的：面板上没接点击的空白处（标题行、各组之间的间隙、底部那行的
+      空档）如果不吃掉触摸，事件会继续往下透给同级的遮罩 —— 手指点在面板上反而把面板
+      关掉。以前在 Dialog 里没这个问题，那时候"点在窗口外"是窗口层判定的，面板内部
+      一律不算外。
+    -->
+    <LinearLayout
+        android:id="@+id/sheetRoot"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:clickable="true">
+        <!-- 底色和圆角是在 Java 里拼的 GradientDrawable —— 见 applySheetBackground，
+             写在这里的 drawable 取不到主题色，底会是透明的 -->
+
+    <!-- ==================== 标题行 ==================== -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="20dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="4dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="筛选与排序"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            android:textColor="?android:attr/textColorPrimary"/>
+
+        <!-- 把排序和过滤一起恢复默认，和「软件设置」的"恢复默认"同一个语义 -->
+        <TextView
+            android:id="@+id/tvFilterReset"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
+            android:minWidth="48dp"
+            android:gravity="center"
+            android:text="重置"
+            android:textSize="14sp"
+            android:textColor="?attr/colorPrimary"
+            android:background="?attr/selectableItemBackground"/>
+    </LinearLayout>
+
+    <!--
+      ScrollView 平时就是 wrap_content（内容一般放得下，面板自然只有该有的一半高）。
+      小屏/大字体下内容可能顶到状态栏，Java 侧在首次布局后把它夹到屏幕高度的 80%。
+    -->
+    <ScrollView
+        android:id="@+id/svFilterSort"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="8dp">
+
+            <!-- ==================== 排序 ==================== -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="排序"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="?attr/colorPrimary"/>
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/cgSort"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                app:singleSelection="true"
+                app:selectionRequired="true"
+                app:singleLine="false"
+                app:chipSpacingHorizontal="8dp"
+                app:chipSpacingVertical="8dp">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipSortRating"
+                    style="@style/Widget.AvList.FilterChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:tag="RATING"
+                    android:text="星级"/>
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipSortJump"
+                    style="@style/Widget.AvList.FilterChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:tag="JUMP_COUNT"
+                    android:text="跳转次数"/>
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipSortTime"
+                    style="@style/Widget.AvList.FilterChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:tag="TIME"
+                    android:text="添加时间"/>
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipSortCode"
+                    style="@style/Widget.AvList.FilterChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:tag="CODE"
+                    android:text="番号首字母"/>
+
+            </com.google.android.material.chip.ChipGroup>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="再点一次选中的那项，切换升序/降序"
+                android:textSize="11sp"
+                android:textColor="?android:attr/textColorSecondary"/>
+
+            <!-- ==================== 星级 ==================== -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="星级"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="?attr/colorPrimary"/>
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/cgRating"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                app:singleSelection="true"
+                app:selectionRequired="true"
+                app:singleLine="false"
+                app:chipSpacingHorizontal="8dp"
+                app:chipSpacingVertical="8dp">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipRatingAny"
+                    style="@style/Widget.AvList.FilterChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:tag="ANY"
+                    android:text="不限"/>
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipRatingUnrated"
+                    style="@style/Widget.AvList.FilterChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:tag="UNRATED"
+                    android:text="未评分"/>
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipRatingGe1"
+                    style="@style/Widget.AvList.FilterChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:tag="GE1"
+                    android:text="≥1★"/>
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipRatingGe3"
+                    style="@style/Widget.AvList.FilterChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:tag="GE3"
+                    android:text="≥3★"/>
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipRatingFive"
+                    style="@style/Widget.AvList.FilterChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:tag="FIVE"
+                    android:text="5★"/>
+
+            </com.google.android.material.chip.ChipGroup>
+
+            <!-- ==================== 图片 ==================== -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="图片"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="?attr/colorPrimary"/>
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/cgImage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                app:singleSelection="true"
+                app:selectionRequired="true"
+                app:singleLine="false"
+                app:chipSpacingHorizontal="8dp"
+                app:chipSpacingVertical="8dp">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipImageAny"
+                    style="@style/Widget.AvList.FilterChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:tag="ANY"
+                    android:text="不限"/>
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipImageHas"
+                    style="@style/Widget.AvList.FilterChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:tag="HAS"
+                    android:text="有图"/>
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipImageNone"
+                    style="@style/Widget.AvList.FilterChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:tag="NONE"
+                    android:text="无图"/>
+
+            </com.google.android.material.chip.ChipGroup>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="「有图」= 卡片上看得见封面（本地文件或图片链接任一存在）"
+                android:textSize="11sp"
+                android:textColor="?android:attr/textColorSecondary"/>
+
+            <!-- ==================== 刮削开关 ==================== -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="刮削"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="?attr/colorPrimary"/>
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/cgScrape"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                app:singleSelection="true"
+                app:selectionRequired="true"
+                app:singleLine="false"
+                app:chipSpacingHorizontal="8dp"
+                app:chipSpacingVertical="8dp">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipScrapeAny"
+                    style="@style/Widget.AvList.FilterChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:tag="ANY"
+                    android:text="不限"/>
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipScrapeOn"
+                    style="@style/Widget.AvList.FilterChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:tag="ON"
+                    android:text="开着"/>
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipScrapeOff"
+                    style="@style/Widget.AvList.FilterChip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:tag="OFF"
+                    android:text="关掉"/>
+
+            </com.google.android.material.chip.ChipGroup>
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- ==================== 底部 ==================== -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="20dp"
+        android:paddingEnd="16dp"
+        android:paddingVertical="10dp">
+
+        <TextView
+            android:id="@+id/tvMatchCount"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text=""
+            android:textSize="13sp"
+            android:textColor="?android:attr/textColorSecondary"/>
+
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/btnFilterDone"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:minWidth="88dp"
+            android:text="完成"
+            android:textSize="14sp"/>
+
+    </LinearLayout>
+
+    </LinearLayout>
+
+</FrameLayout>
